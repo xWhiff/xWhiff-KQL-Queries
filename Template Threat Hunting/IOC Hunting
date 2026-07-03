@@ -1,0 +1,19 @@
+let IOC = dynamic(["hash", "hash"]);
+let DeviceFileHunt = (
+    DeviceFileEvents
+    | where Timestamp > ago(30d)
+    | where MD5 in (IOC) or SHA1 in (IOC) or SHA256 in (IOC)
+    | project Table = Type, Timestamp, DeviceName, FileName, MD5, SHA1, SHA256);
+let DeviceProcessHunt = (
+    DeviceProcessEvents
+    | where Timestamp > ago(30d)
+    | where MD5 in (IOC) or SHA1 in (IOC) or SHA256 in (IOC)
+    | project Table = Type, Timestamp, DeviceName, FileName, MD5, SHA1, SHA256);
+let EmailAttachmentHunt = ( 
+    EmailAttachmentInfo
+    | where Timestamp > ago(30d)
+    | where SHA256 in (IOC)
+    | project Table = Type, Timestamp, NetworkMessageId, FileName, SHA256, SenderFromAddress
+    | join EmailEvents on NetworkMessageId
+    | project Table = Type, Timestamp, NetworkMessageId, FileName, SHA256, SenderFromAddress, RecipientEmailAddress);
+union isfuzzy=true DeviceFileHunt, DeviceProcessHunt, EmailAttachmentHunt
