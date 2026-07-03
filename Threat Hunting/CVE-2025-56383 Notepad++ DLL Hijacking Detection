@@ -1,0 +1,7 @@
+DeviceImageLoadEvents
+| where TimeGenerated > ago(1h)
+| where ActionType == "ImageLoaded"
+| where FileName endswith ".dll" or FileName endswith ".DLL"
+| where FolderPath has "notepad++"
+| invoke FileProfile("SHA1",1000)
+| where GlobalPrevalence < 10
