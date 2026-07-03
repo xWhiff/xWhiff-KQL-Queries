@@ -1,0 +1,6 @@
+DeviceProcessEvents
+| where FileName =~ "powershell.exe"
+| where ProcessCommandLine has_all ("Set-MpPreference")
+| where ProcessCommandLine has_any ("exclusionprocess", "DisableRealtimeMonitoring", 
+"Disableioavprotection", "disablebehaviormonitoring", "disableintrusionpreventionsystem",
+"disablescriptscanning")
