@@ -1,0 +1,116 @@
+// Title: Ultimate ClickFix Detection: Multi-Stage Attack Chain Correlation
+// Description: Consolidates every ClickFix attack-chain stage into one correlated rule - RunMRU paste-execute, CAPTCHA-lure download cradles, Windows Terminal RunMRU-evasion, FileFix/DownloadFix zip staging, hidden-window PowerShell, string-concatenation obfuscated domains, fileless AES/TripleDES runspace payloads, masqueraded drops with empty PE OriginalFileName (incl. C:\Users\Public), COM hijack persistence with DLL drop, WMI hardware recon, LOLBin abuse from clipboard-paste, non-standard AppData DLL side-load staging, and explorer/terminal-spawned interpreters that immediately beacon out. Emits a DetectionCategory/MatchedPattern per hit and elevates confidence when multiple sub-patterns chain on the same device within an hour.
+// MITRE ATT&CK: T1204.004 - User Execution: Malicious Copy and Paste (related: T1059.001, T1059.003, T1027, T1036.005, T1546.015, T1105, T1047, T1082, T1218.007, T1218.005, T1560.001, T1564.003, T1574.002, T1071.001, T1112, T1140, T1620)
+// Author: Ethan Andrews
+// Reference: https://detections.ai/inspirations/019f1fb9-12b3-73b8-9837-8448644824ee, https://detections.ai/inspirations/019f1fb9-12f1-74a8-9b67-88b25a63d0b2, https://detections.ai/inspirations/019f1fb9-132a-761e-b1f1-30fb8a573b45, https://detections.ai/inspirations/019f1fb9-1369-70f9-a198-49e1cd4a8999
+let TimeWindow = 1d;
+let RunMRU_PasteExecute = DeviceRegistryEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where RegistryKey has @"Explorer\RunMRU" 
+| where RegistryValueData has_any ("-enc","-eC","-EncodedCommand","curl","mshta","iwr","Invoke-WebRequest","DownloadString","FromBase64String","-w hidden") | project Timestamp = TimeGenerated, DeviceName, AccountName = InitiatingProcessAccountName, FileName = InitiatingProcessFileName, FolderPath = InitiatingProcessFolderPath, ProcessCommandLine = RegistryValueData, InitiatingProcessCommandLine, DetectionCategory = "RunMRU_PasteExecute", MatchedPattern = RegistryValueData, Severity = "High";
+let CaptchaLureDownloadCradle = DeviceProcessEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where InitiatingProcessFileName =~ "explorer.exe" 
+| where FileName in~ ("powershell.exe","cmd.exe") 
+| where ProcessCommandLine has_any ("iwr","curl","IEX","Invoke-Expression","Invoke-WebRequest") 
+| where ProcessCommandLine has_any ("I am not a robot","Cloudflare Verification","robot","CAPTCHA","reCAPTCHA") | project Timestamp = TimeGenerated, DeviceName, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "CaptchaLureDownloadCradle", MatchedPattern = ProcessCommandLine, Severity = "High";
+let TerminalEvasionRunMRUBypass = DeviceProcessEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where InitiatingProcessFileName in~ ("WindowsTerminal.exe","OpenConsole.exe") 
+| where FileName in~ ("powershell.exe","PING.EXE","cmd.exe") 
+| where ProcessCommandLine has_any ("iwr","curl","IEX","mshta","DownloadString","-enc") | project Timestamp = TimeGenerated, DeviceName, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "TerminalEvasionRunMRUBypass", MatchedPattern = InitiatingProcessFileName, Severity = "Medium";
+let FileFixDownloadFixOrchestrator = DeviceProcessEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where ProcessCommandLine has "Move-Item" and ProcessCommandLine has "Downloads" 
+| where ProcessCommandLine has_any ("tar -xf","conhost --headless") | project Timestamp = TimeGenerated, DeviceName, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "FileFixDownloadFixOrchestrator", MatchedPattern = ProcessCommandLine, Severity = "High";
+let HiddenWindowPowerShell = DeviceProcessEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where FileName =~ "powershell.exe" 
+| where ProcessCommandLine has_any ("-w h","-windowstyle hidden","-WindowStyle Hidden") 
+| where ProcessCommandLine has_any ("-enc","-eC","-EncodedCommand","IEX","Invoke-Expression","DownloadString","Net.WebClient") | project Timestamp = TimeGenerated, DeviceName, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "HiddenWindowPowerShell", MatchedPattern = ProcessCommandLine, Severity = "Medium";
+let ObfuscatedStringConcatDomain = DeviceProcessEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where FileName =~ "powershell.exe" 
+| where ProcessCommandLine matches regex @"='[^']*'\s*\+\s*'[^']*'\s*\+\s*'[^']*'" | project Timestamp = TimeGenerated, DeviceName, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "ObfuscatedStringConcatDomain", MatchedPattern = ProcessCommandLine, Severity = "Medium";
+let FilelessRunspaceDecryption = DeviceProcessEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where ProcessCommandLine has_any ("[Security.Cryptography.Aes]::Create()","[Security.Cryptography.TripleDES]::Create()","CreateDecryptor().TransformFinalBlock","[runspacefactory]::CreateRunspace()") | project Timestamp = TimeGenerated, DeviceName, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "FilelessRunspaceDecryption", MatchedPattern = ProcessCommandLine, Severity = "High";
+let MasqueradedDropEmptyOriginalName = DeviceProcessEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where InitiatingProcessFileName =~ "powershell.exe" 
+| where isempty(ProcessVersionInfoOriginalFileName) 
+| where FolderPath has_any (@"\Users\", @"\AppData\", @"\ProgramData\", @"\Temp\") 
+| where FolderPath !has @"\Package Cache\" and FolderPath !has @"\Windows\Temp\" and FolderPath !has @"\Temp\{" 
+// NinjaRMM's built-in monitoring scripts (local admin list, SMB signing, new-user
+// alerts) run on this exact shape hourly, fleet-wide -- powershell launched from
+// ProgramData\NinjaRMMAgent\scripting\customscript_*.ps1, shelling out to ninjarmm-cli.exe.
+| where not(InitiatingProcessCommandLine has "NinjaRMMAgent" or ProcessCommandLine has "ninjarmm-cli.exe")
+| project Timestamp = TimeGenerated, DeviceName, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "MasqueradedDropEmptyOriginalName", MatchedPattern = FileName, Severity = "High";
+let PublicFolderExecutableDrop = DeviceFileEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where FolderPath has @"\Users\Public\" 
+| where FileName endswith ".exe" 
+| where InitiatingProcessFileName =~ "powershell.exe" | project Timestamp = TimeGenerated, DeviceName, AccountName = InitiatingProcessAccountName, FileName, FolderPath, ProcessCommandLine = InitiatingProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "PublicFolderExecutableDrop", MatchedPattern = FolderPath, Severity = "Medium";
+// --- COMHijackDLLDrop-------------------------------------------------
+// Known-benign bare COM shim filenames that register with no path at all -- these
+// resolve through the OS DLL search order / KnownDLLs and are not attacker-controlled.
+let KnownBenignBareDllNames = dynamic(["mscoree.dll"]);
+let COMHijackDLLDrop = DeviceRegistryEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where RegistryKey has "InprocServer32" 
+| where RegistryValueData endswith ".dll" 
+| extend DllPathLower = tolower(RegistryValueData)
+| where not(
+    DllPathLower startswith @"c:\windows\system32\"
+    or DllPathLower startswith @"c:\windows\syswow64\"
+    or DllPathLower startswith @"\\?\c:\windows\system32\"
+    or DllPathLower startswith @"%systemroot%\"
+    or DllPathLower startswith @"c:\program files\"
+    or DllPathLower startswith @"c:\program files (x86)\"
+    or DllPathLower startswith @"c:\programdata\microsoft\"
+    or DllPathLower startswith @"c:\packages\plugins\"
+    // Per-user Microsoft-signed application installs (OneDrive, Teams Meeting Add-in,
+    // etc.). Trade-off: this trusts any vendor folder under the Microsoft namespace in
+    // per-user AppData\Local rather than an explicit per-product allowlist. Attacker-
+    // writable locations like \Temp\, \AppData\Roaming\, \Downloads\, and \Public\ are
+    // NOT covered by this line and will still be flagged.
+    or DllPathLower matches regex @"^c:\\users\\[^\\]+\\appdata\\local\\microsoft\\"
+    // per-user SolidWorks / SolidWorks PDM COM add-in self-registration
+    // (AddInRegSrv64.exe -Embedding, SWUpdaterComRegisterShell64.exe /user) -- confirmed
+    // fleet-wide recurring pattern, not attacker-controlled.
+    or DllPathLower matches regex @"^c:\\users\\[^\\]+\\appdata\\local\\solidworks\\"
+    or DllPathLower matches regex @"^c:\\users\\[^\\]+\\wavesor software\\swupdater\\"
+    // some EDR telemetry double-escapes the % in REG_EXPAND_SZ registry values
+    // (observed from Adobe CoreSync.exe registering %%systemroot%%\system32\shell32.dll).
+    or DllPathLower startswith @"%%systemroot%%\"
+    or DllPathLower in (KnownBenignBareDllNames)
+) | project Timestamp = TimeGenerated, DeviceName, AccountName = InitiatingProcessAccountName, FileName = InitiatingProcessFileName, FolderPath = RegistryValueData, ProcessCommandLine = InitiatingProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "COMHijackDLLDrop", MatchedPattern = RegistryValueData, Severity = "Medium";
+let WMIHardwareRecon = DeviceEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where AdditionalFields has_any ("Win32_Processor","Win32_BaseBoard") | project Timestamp = TimeGenerated, DeviceName, AccountName = InitiatingProcessAccountName, FileName = InitiatingProcessFileName, FolderPath = InitiatingProcessFolderPath, ProcessCommandLine = InitiatingProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "WMIHardwareRecon", MatchedPattern = tostring(AdditionalFields), Severity = "Low";
+let LOLBinSuspiciousArgs = DeviceProcessEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where InitiatingProcessFileName in~ ("explorer.exe","WindowsTerminal.exe","OpenConsole.exe","cmd.exe","powershell.exe") 
+| where FileName in~ ("msiexec.exe","mshta.exe","curl.exe","bitsadmin.exe","wscript.exe","rundll32.exe","regsvr32.exe") 
+| where (FileName =~ "mshta.exe" and ProcessCommandLine has_any ("http://","https://")) or (FileName =~ "msiexec.exe" and ProcessCommandLine has_any ("/i","/q") and ProcessCommandLine has_any ("http://","https://")) or (FileName =~ "curl.exe" and ProcessCommandLine has "-o" and ProcessCommandLine has_any (".ps1",".exe",".dll",".bat")) or (FileName =~ "bitsadmin.exe" and ProcessCommandLine has "/transfer") or (FileName =~ "regsvr32.exe" and ProcessCommandLine has "/i:" and ProcessCommandLine has "scrobj.dll") or (FileName =~ "rundll32.exe" and ProcessCommandLine !contains @"\system32\" and ProcessCommandLine !contains @"\syswow64\") or (FileName =~ "wscript.exe" and ProcessCommandLine has_any (@"\AppData\", @"\Temp\")) | project Timestamp = TimeGenerated, DeviceName, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "LOLBinSuspiciousArgs", MatchedPattern = ProcessCommandLine, Severity = "Medium";
+let NonStandardAppDataDLLDrop = DeviceFileEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where FolderPath has_any (@"\AppData\Local\", @"\AppData\Roaming\") 
+| where FileName endswith ".dll" 
+| where InitiatingProcessFileName in~ ("powershell.exe","cmd.exe","mshta.exe") 
+| where not(InitiatingProcessCommandLine has "NinjaRMMAgent")
+| project Timestamp = TimeGenerated, DeviceName, AccountName = InitiatingProcessAccountName, FileName, FolderPath, ProcessCommandLine = InitiatingProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "NonStandardAppDataDLLDrop", MatchedPattern = FolderPath, Severity = "Medium";
+let ExplorerTerminalSpawnedInterpreterWithNetwork = DeviceProcessEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where InitiatingProcessFileName in~ ("explorer.exe","WindowsTerminal.exe") 
+| where FileName in~ ("powershell.exe","cmd.exe","msiexec.exe") | join kind=inner (DeviceNetworkEvents 
+| where TimeGenerated > ago(TimeWindow) 
+| where RemoteIPType != "Private" | project DeviceId, Timestamp1 = TimeGenerated, InitiatingProcessId, RemoteIPType) on DeviceId, $left.ProcessId == $right.InitiatingProcessId 
+| where (Timestamp1 - TimeGenerated) between (0s .. 5s) | project Timestamp = TimeGenerated, DeviceName, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessCommandLine, DetectionCategory = "ExplorerTerminalSpawnedInterpreterWithNetwork", MatchedPattern = strcat(InitiatingProcessFileName, " -> ", FileName), Severity = "High";
+union RunMRU_PasteExecute, CaptchaLureDownloadCradle, TerminalEvasionRunMRUBypass, FileFixDownloadFixOrchestrator, HiddenWindowPowerShell, ObfuscatedStringConcatDomain, FilelessRunspaceDecryption, MasqueradedDropEmptyOriginalName, PublicFolderExecutableDrop, COMHijackDLLDrop, WMIHardwareRecon, LOLBinSuspiciousArgs, NonStandardAppDataDLLDrop, ExplorerTerminalSpawnedInterpreterWithNetwork
+| extend IsPrimarySignal = DetectionCategory in ("RunMRU_PasteExecute","CaptchaLureDownloadCradle","FileFixDownloadFixOrchestrator","FilelessRunspaceDecryption")
+| summarize MatchedPatterns = make_set(MatchedPattern), DetectionCategories = make_set(DetectionCategory), ChainCount = dcount(DetectionCategory), HasPrimarySignal = countif(IsPrimarySignal) > 0, FirstSeen = min(Timestamp), LastSeen = max(Timestamp), FileName = any(FileName), FolderPath = any(FolderPath), ProcessCommandLine = any(ProcessCommandLine), InitiatingProcessCommandLine = any(InitiatingProcessCommandLine) by DeviceName, AccountName, bin(Timestamp, 1h)
+| where HasPrimarySignal or ChainCount >= 2
+| extend Confidence = case(ChainCount >= 3, "Critical", ChainCount == 2, "High", "Medium")
+| project FirstSeen, LastSeen, DeviceName, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessCommandLine, DetectionCategories, MatchedPatterns, ChainCount, HasPrimarySignal, Confidence
+| sort by ChainCount desc, LastSeen desc
