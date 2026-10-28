@@ -1,0 +1,46 @@
+let MacDevices = DeviceInfo | where OSPlatform == "macOS" | distinct DeviceId;
+let Fixed = datatable(Runtime:string, Major:int, FixedVersion:string)
+[
+    "node", 22, "22.23.4",
+    "node", 24, "24.22.1",
+    "node", 26, "26.12.1",
+    "bun",  1,  "1.4.4"
+];
+let Runs =
+    DeviceProcessEvents
+    | where Timestamp > ago(30d)
+    | where DeviceId in (MacDevices)
+    | where FileName in~ ("node", "bun")
+    | extend Runtime = tolower(FileName)
+    | extend PathVersion = extract(@"/v?(\d+\.\d+\.\d+)(?:_\d+)?/", 1, FolderPath)
+    | summarize LastRun = max(Timestamp), Runs = count(), Users = make_set(AccountName, 5)
+        by DeviceName, Runtime, FolderPath, SHA256, PathVersion;
+// Borrow a version for path-less installs from any device running the same binary hash
+let HashVersion =
+    Runs
+    | where isnotempty(PathVersion)
+    | summarize HashVer = take_any(PathVersion) by SHA256;
+Runs
+| join kind=leftouter HashVersion on SHA256
+| extend Version = iff(isnotempty(PathVersion), PathVersion, HashVer)
+| extend Major = toint(split(Version, ".")[0])
+| join kind=leftouter Fixed on Runtime, Major
+| extend Source = case(
+    FolderPath has "/.nvm/", "nvm",
+    FolderPath has "/Cellar/", "Homebrew",
+    FolderPath has "/fnm/", "fnm",
+    FolderPath has "/.volta/", "Volta",
+    FolderPath has "/.asdf/", "asdf",
+    FolderPath has "/.bun/", "Bun installer",
+    FolderPath has ".app/", "Bundled in an app",
+    FolderPath startswith "/usr/local/bin", "Official pkg",
+    "Other")
+| extend Status = case(
+    isempty(Version), "UNKNOWN - check on host (2b)",
+    Runtime == "node" and Major > 26, "Check advisory (newer line)",
+    isempty(FixedVersion), "AFFECTED - EOL line, no fix, upgrade major",
+    parse_version(Version) < parse_version(FixedVersion), "AFFECTED - patch available",
+    "Patched")
+| where Status != "Patched"
+| project DeviceName, Runtime, Version, FixedVersion, Status, Source, FolderPath, SHA256, Users, LastRun, Runs
+| order by Status asc, DeviceName asc
