@@ -1,0 +1,21 @@
+let tools = dynamic(["sh","bash","dash","zsh","cmd.exe","powershell.exe","pwsh","pwsh.exe",
+  "curl","curl.exe","wget","nc","ncat","python","python3","perl",
+  "whoami","whoami.exe","id","uname","certutil.exe"]);
+let events = DeviceProcessEvents
+| where Timestamp > ago(30d)
+| where InitiatingProcessFileName in~ ("node","node.exe")
+| where FileName in~ (tools)
+| extend Pattern = strcat(FileName, " | ", replace_regex(ProcessCommandLine, @"\d+", "N"));
+// Patterns seen in the previous 29 days
+let history = events
+| where Timestamp < ago(1d)
+| summarize HistDevices = dcount(DeviceId) by Pattern;
+// Today's patterns, flag anything not seen before
+events
+| where Timestamp > ago(1d)
+| summarize Hits = count(), Devices = make_set(DeviceName, 10),
+            Example = any(ProcessCommandLine), Parent = any(InitiatingProcessCommandLine)
+    by Pattern
+| join kind=leftouter history on Pattern
+| extend IsNew = isempty(HistDevices)
+| order by IsNew desc, Hits asc
