@@ -1,0 +1,28 @@
+let signins = union
+    (SigninLogs
+        | where TimeGenerated > ago(lookback)
+        | where UserPrincipalName =~ user
+        | project TimeGenerated, SignInType = "Interactive", UserPrincipalName, AppDisplayName,
+            ResultType = tostring(ResultType), ResultDescription = tostring(ResultDescription),
+            IPAddress = tostring(IPAddress), Loc = todynamic(LocationDetails),
+            AuthDet = todynamic(AuthenticationDetails),
+            AuthenticationRequirement = tostring(AuthenticationRequirement),
+            ConditionalAccessStatus = tostring(ConditionalAccessStatus),
+            RiskLevelDuringSignIn = tostring(RiskLevelDuringSignIn), UserAgent = tostring(UserAgent)),
+    (AADNonInteractiveUserSignInLogs
+        | where TimeGenerated > ago(lookback)
+        | where UserPrincipalName =~ user
+        | project TimeGenerated, SignInType = "NonInteractive", UserPrincipalName, AppDisplayName,
+            ResultType = tostring(ResultType), ResultDescription = tostring(ResultDescription),
+            IPAddress = tostring(IPAddress), Loc = todynamic(LocationDetails),
+            AuthDet = todynamic(AuthenticationDetails),
+            AuthenticationRequirement = tostring(AuthenticationRequirement),
+            ConditionalAccessStatus = tostring(ConditionalAccessStatus),
+            RiskLevelDuringSignIn = tostring(RiskLevelDuringSignIn), UserAgent = tostring(UserAgent))
+| mv-apply ad = AuthDet on (
+    summarize AuthSteps = make_set(strcat(
+        tostring(ad.authenticationMethod), " - ",
+        tostring(ad.authenticationMethodDetail), " - ",
+        tostring(ad.authenticationStepResultDetail),
+        iff(tobool(ad.succeeded), " [OK]", " [FAIL]")))
+)
