@@ -1,0 +1,37 @@
+// ---- Inputs ----
+let suspectIP = "10.0.0.25";                    // local IP from the block
+let alertTime = datetime(2026-11-14 08:00:00);  // time of the blocked connection (UTC)
+let window = 30m;                               // how far either side to look
+let domain = "baddomain.com";                   // optional - leave "" if none
+// ---- Step 1: resolve local IP to device at that time ----
+let device = DeviceNetworkInfo
+| where Timestamp between ((alertTime - 1d) .. (alertTime + 1h))
+| mv-expand ipinfo = todynamic(IPAddresses)
+| where tostring(ipinfo.IPAddress) == suspectIP
+| summarize arg_max(Timestamp, DeviceId, DeviceName);
+let devId = toscalar(device | project DeviceId);
+// ---- Step 2: grandparent lookup for a 3-level process tree ----
+let grandparents = DeviceProcessEvents
+| where DeviceId == devId
+| where Timestamp between ((alertTime - 7d) .. (alertTime + window))
+| project DeviceId,
+    ParentPid = ProcessId,
+    ParentCreated = ProcessCreationTime,
+    GrandParentName = InitiatingProcessFileName,
+    GrandParentCmd = InitiatingProcessCommandLine;
+// ---- Step 3: all connections around the alert ----
+DeviceNetworkEvents
+| where DeviceId == devId
+| where Timestamp between ((alertTime - window) .. (alertTime + window))
+| join kind=leftouter grandparents on DeviceId,
+    $left.InitiatingProcessParentId == $right.ParentPid,
+    $left.InitiatingProcessParentCreationTime == $right.ParentCreated
+| extend Flag = case(
+    isnotempty(domain) and RemoteUrl has domain, "TARGET DOMAIN",
+    RemoteIPType == "Public" and isempty(RemoteUrl), "Public IP, no URL",
+    ""),
+    ProcessTree = strcat(GrandParentName, " > ", InitiatingProcessParentFileName, " > ", InitiatingProcessFileName)
+| project Timestamp, DeviceName, Flag, ActionType, RemoteUrl, RemoteIP, RemotePort, Protocol,
+    ProcessTree, InitiatingProcessCommandLine, InitiatingProcessAccountName,
+    InitiatingProcessFolderPath, InitiatingProcessSHA256, GrandParentCmd
+| sort by Timestamp asc
