@@ -1,8 +1,12 @@
+let user = "user@contoso.com";
+let lookback = 7d;
+let keyOps = dynamic(["password", "security info", "authentication method", "StrongAuthentication", "Update user"]);
 let signins = union
     (SigninLogs
         | where TimeGenerated > ago(lookback)
         | where UserPrincipalName =~ user
-        | project TimeGenerated, SignInType = "Interactive", UserPrincipalName, AppDisplayName,
+        | project TimeGenerated, SignInType = "Interactive", UserPrincipalName = tostring(UserPrincipalName),
+            AppDisplayName = tostring(AppDisplayName),
             ResultType = tostring(ResultType), ResultDescription = tostring(ResultDescription),
             IPAddress = tostring(IPAddress), Loc = todynamic(LocationDetails),
             AuthDet = todynamic(AuthenticationDetails),
@@ -12,7 +16,8 @@ let signins = union
     (AADNonInteractiveUserSignInLogs
         | where TimeGenerated > ago(lookback)
         | where UserPrincipalName =~ user
-        | project TimeGenerated, SignInType = "NonInteractive", UserPrincipalName, AppDisplayName,
+        | project TimeGenerated, SignInType = "NonInteractive", UserPrincipalName = tostring(UserPrincipalName),
+            AppDisplayName = tostring(AppDisplayName),
             ResultType = tostring(ResultType), ResultDescription = tostring(ResultDescription),
             IPAddress = tostring(IPAddress), Loc = todynamic(LocationDetails),
             AuthDet = todynamic(AuthenticationDetails),
@@ -26,3 +31,37 @@ let signins = union
         tostring(ad.authenticationStepResultDetail),
         iff(tobool(ad.succeeded), " [OK]", " [FAIL]")))
 )
+| extend Activity = AppDisplayName,
+    Outcome = iff(ResultType == "0", "Success", strcat("Fail ", ResultType, ": ", ResultDescription)),
+    IP = IPAddress,
+    Location = strcat(tostring(Loc.city), ", ", tostring(Loc.countryOrRegion)),
+    MFARequired = AuthenticationRequirement,
+    AuthMethods = strcat_array(AuthSteps, " | "),
+    Actor = UserPrincipalName,
+    Details = strcat("CA: ", ConditionalAccessStatus, " | Risk: ", RiskLevelDuringSignIn, " | UA: ", UserAgent)
+| project TimeGenerated, SignInType, Activity, Outcome, IP, Location, MFARequired, AuthMethods, Actor, Details;
+let interactive = signins
+| where SignInType == "Interactive"
+| extend Source = "SignIn-Interactive", Events = long(1)
+| project-away SignInType;
+let noninteractive = signins
+| where SignInType == "NonInteractive"
+| summarize FirstSeen = min(TimeGenerated), Events = count(),
+    AuthMethods = strcat_array(make_set(AuthMethods), " || "),
+    Details = take_any(Details)
+    by bin(TimeGenerated, 1h), IP, Activity, Outcome, Location, MFARequired, Actor
+| extend TimeGenerated = FirstSeen, Source = "SignIn-NonInteractive"
+| project-away FirstSeen;
+let audits = AuditLogs
+| where TimeGenerated > ago(lookback)
+| where tostring(TargetResources) has user or tostring(InitiatedBy.user.userPrincipalName) =~ user
+| where OperationName has_any (keyOps)
+| extend Source = "Audit", Events = long(1),
+    Activity = tostring(OperationName),
+    Outcome = tostring(Result),
+    IP = tostring(InitiatedBy.user.ipAddress),
+    Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),
+    Details = tostring(TargetResources[0].modifiedProperties);
+union interactive, noninteractive, audits
+| project TimeGenerated, Source, Events, Activity, Outcome, Actor, IP, Location, MFARequired, AuthMethods, Details
+| sort by TimeGenerated desc
