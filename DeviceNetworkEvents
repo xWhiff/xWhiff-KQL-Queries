@@ -1,15 +1,26 @@
 // ---- Inputs ----
-let suspectIP = "10.0.0.25";                    // local IP from the block
-let alertTime = datetime(2026-11-14 08:00:00);  // time of the blocked connection (UTC)
-let window = 30m;                               // how far either side to look
-let domain = "baddomain.com";                   // optional - leave "" if none
-// ---- Step 1: resolve local IP to device at that time ----
-let device = DeviceNetworkInfo
-| where Timestamp between ((alertTime - 1d) .. (alertTime + 1h))
-| mv-expand ipinfo = todynamic(IPAddresses)
-| where tostring(ipinfo.IPAddress) == suspectIP
-| summarize arg_max(Timestamp, DeviceId, DeviceName);
-let devId = toscalar(device | project DeviceId);
+let localIP = "10.200.0.25";                    // local / VPN IP from the alert
+let alertTime = datetime(2026-11-14 08:00:00);  // alert time (UTC)
+let window = 10m;                               // 10 mins either side
+let domain = "";                                // optional - leave "" if none
+let watchIPs = dynamic(["1.1.1.1", "2.2.2.2", "3.3.3.3"]);  // your 3 IPs
+// ---- Step 1: resolve local IP to device ----
+// First try the network events themselves (best for VPN IPs)
+let devFromEvents = toscalar(
+    DeviceNetworkEvents
+    | where Timestamp between ((alertTime - window) .. (alertTime + window))
+    | where LocalIP == localIP
+    | summarize arg_min(abs(Timestamp - alertTime), DeviceId)
+    | project DeviceId);
+// Fallback: DeviceNetworkInfo adapter records
+let devFromInfo = toscalar(
+    DeviceNetworkInfo
+    | where Timestamp between ((alertTime - 1d) .. (alertTime + 1h))
+    | mv-expand ipinfo = todynamic(IPAddresses)
+    | where tostring(ipinfo.IPAddress) == localIP
+    | summarize arg_max(Timestamp, DeviceId)
+    | project DeviceId);
+let devId = coalesce(devFromEvents, devFromInfo);
 // ---- Step 2: grandparent lookup for a 3-level process tree ----
 let grandparents = DeviceProcessEvents
 | where DeviceId == devId
@@ -27,11 +38,12 @@ DeviceNetworkEvents
     $left.InitiatingProcessParentId == $right.ParentPid,
     $left.InitiatingProcessParentCreationTime == $right.ParentCreated
 | extend Flag = case(
+    RemoteIP in (watchIPs), strcat("WATCH IP: ", RemoteIP),
     isnotempty(domain) and RemoteUrl has domain, "TARGET DOMAIN",
     RemoteIPType == "Public" and isempty(RemoteUrl), "Public IP, no URL",
     ""),
     ProcessTree = strcat(GrandParentName, " > ", InitiatingProcessParentFileName, " > ", InitiatingProcessFileName)
-| project Timestamp, DeviceName, Flag, ActionType, RemoteUrl, RemoteIP, RemotePort, Protocol,
+| project Timestamp, DeviceName, Flag, ActionType, LocalIP, RemoteUrl, RemoteIP, RemotePort, Protocol,
     ProcessTree, InitiatingProcessCommandLine, InitiatingProcessAccountName,
     InitiatingProcessFolderPath, InitiatingProcessSHA256, GrandParentCmd
 | sort by Timestamp asc
