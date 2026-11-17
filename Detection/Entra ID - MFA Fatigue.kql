@@ -1,0 +1,85 @@
+// =============================================================================
+// Title:          Entra ID - MFA Fatigue
+// Type:           Detection
+// Platform:       Microsoft Sentinel / Log Analytics
+// Description:    Finds a user who had several MFA prompts fail (denied, ignored or
+//                 timed out) and then approved one shortly after. This is the MFA
+//                 fatigue pattern: an attacker with the password keeps sending push
+//                 prompts until the user gives in and taps Approve.
+//
+// MITRE ATT&CK:   T1621 - Multi-Factor Authentication Request Generation;
+//                 T1078.004 - Valid Accounts: Cloud Accounts
+// Data sources:   SigninLogs
+// References:     https://attack.mitre.org/techniques/T1621/
+//                 https://securitylabs.datadoghq.com/cloud-security-atlas/attacks/mfa-fatigue
+//                 https://beemermeup.github.io/Detecting-Suspicious-MFA-Behavior.html
+//
+// How to use:     Run as a Sentinel analytics rule every hour with lookback = 1d, or
+//                 run by hand. SameIPAsPrompts = true is the classic pattern: the
+//                 approval came from the same place as the failed prompts. On a hit,
+//                 call the user: did they approve a prompt they didn't start? If so,
+//                 revoke their sessions and reset the password.
+// Tuning / FPs:   A user with a new phone or Authenticator problems can fail several
+//                 prompts and then succeed: check FailReasons. Raise minFailedPrompts
+//                 or add accounts to ExcludedUsers if needed. Slow attacks spread over
+//                 more than one window are missed; widen window to catch them.
+//
+// Author:         xWhiff
+// Created:        2026-11-17
+// Updated:        2026-11-17 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let lookback = 1d;                    // how far back to search
+let window = 1h;                      // the failed prompts must come within this time before the approval
+let minFailedPrompts = 5;             // how many failed prompts before an approval is suspicious
+let ExcludedUsers = dynamic([]);      // UPNs to ignore, e.g. test accounts
+
+// ---- Step 1: MFA prompts that failed ----
+// Error 500121 = the MFA step failed (denied, not answered, timed out, wrong code).
+// The exact reason text sits inside AuthenticationDetails; it is kept for context only,
+// because Microsoft's wording varies.
+let FailedPrompts =
+    SigninLogs
+    | where TimeGenerated > ago(lookback)
+    | where ResultType == "500121"
+    | where UserPrincipalName !in~ (ExcludedUsers)
+    | mv-apply Step = todynamic(AuthenticationDetails) on (
+        summarize Reasons = make_set(tostring(Step.authenticationStepResultDetail), 3)
+    )
+    | project FailTime = TimeGenerated, UserPrincipalName, FailIP = IPAddress,
+              FailCountry = tostring(todynamic(LocationDetails).countryOrRegion),
+              FailApp = AppDisplayName, FailReason = strcat_array(Reasons, "; ");
+
+// ---- Step 2: Successful sign-ins that needed MFA ----
+let MfaSuccesses =
+    SigninLogs
+    | where TimeGenerated > ago(lookback)
+    | where ResultType == "0"                                         // 0 = success
+    | where AuthenticationRequirement == "multiFactorAuthentication"  // MFA was required
+    | where UserPrincipalName !in~ (ExcludedUsers)
+    | project SuccessTime = TimeGenerated, UserPrincipalName, SuccessIP = IPAddress,
+              SuccessCountry = tostring(todynamic(LocationDetails).countryOrRegion),
+              SuccessApp = AppDisplayName, SuccessUserAgent = UserAgent;
+
+// ---- Step 3: Approvals that came after a burst of failed prompts ----
+// Pair each success with the same user's failures in the window before it, then count them.
+FailedPrompts
+| join kind=inner MfaSuccesses on UserPrincipalName
+| where FailTime between ((SuccessTime - window) .. SuccessTime)
+| summarize FailedPrompts = count(), FirstFailure = min(FailTime), LastFailure = max(FailTime),
+            FailReasons = make_set(FailReason, 5), FailIPs = make_set(FailIP, 10),
+            FailCountries = make_set(FailCountry, 5), FailApps = make_set(FailApp, 5)
+    by UserPrincipalName, SuccessTime, SuccessIP, SuccessCountry, SuccessApp, SuccessUserAgent
+| where FailedPrompts >= minFailedPrompts
+// Keep only the first approval for each burst, so one attack gives one row.
+| summarize arg_min(SuccessTime, *) by UserPrincipalName, FirstFailure
+// Same IP as the failed prompts = the attacker's sign-in finally got approved.
+| extend SameIPAsPrompts = set_has_element(FailIPs, SuccessIP)
+// ---- Output ----
+// One row per suspected attack, most prompts first.
+| project SuccessTime, UserPrincipalName, FailedPrompts, FirstFailure, LastFailure, FailReasons,
+          SameIPAsPrompts, SuccessIP, SuccessCountry, FailIPs, FailCountries, SuccessApp, FailApps,
+          SuccessUserAgent
+| sort by FailedPrompts desc, SuccessTime desc
