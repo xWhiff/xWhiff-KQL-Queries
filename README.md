@@ -36,22 +36,22 @@ Built automatically from each query's header.
 
 | Query | MITRE ATT&CK | Data sources |
 |---|---|---|
-| [Device - Local IP to Network Activity](Investigation/Device%20-%20Local%20IP%20to%20Network%20Activity.kql) | - | - |
-| [Entra ID - Sign-in Logs](Investigation/Entra%20ID%20-%20Sign-in%20Logs.kql) | - | - |
-| [Entra ID - User Authentication Timeline](Investigation/Entra%20ID%20-%20User%20Authentication%20Timeline.kql) | - | - |
+| [Device - Local IP to Network Activity](Investigation/Device%20-%20Local%20IP%20to%20Network%20Activity.kql) | - | DeviceNetworkEvents, DeviceNetworkInfo, DeviceProcessEvents |
+| [Entra ID - Sign-in Logs](Investigation/Entra%20ID%20-%20Sign-in%20Logs.kql) | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
+| [Entra ID - User Authentication Timeline](Investigation/Entra%20ID%20-%20User%20Authentication%20Timeline.kql) | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
 
 ### Baselines
 
 | Query | MITRE ATT&CK | Data sources |
 |---|---|---|
-| [NodeJS - Child Shell Process Baseline](Baselines/NodeJS%20-%20Child%20Shell%20Process%20Baseline.kql) | - | - |
+| [NodeJS - Child Shell Process Baseline](Baselines/NodeJS%20-%20Child%20Shell%20Process%20Baseline.kql) | T1059.001, T1059.003, T1059.004, T1190 | DeviceProcessEvents |
 
 ### Templates
 
 | Query | MITRE ATT&CK | Data sources |
 |---|---|---|
 | [DeviceFileEvents - Suspicious File Activity Triage](Templates/DeviceFileEvents%20-%20Suspicious%20File%20Activity%20Triage.kql) | T1036.007, T1053.005, T1105, T1204.002, T1547.001, T1566.001, T1570 | DeviceFileEvents |
-| [IOC Hunting](Templates/IOC%20Hunting.kql) | - | - |
+| [IOC Hunting](Templates/IOC%20Hunting.kql) | - | DeviceFileEvents, DeviceProcessEvents, EmailAttachmentInfo, EmailEvents |
 
 <!-- CATALOGUE:END -->
 
