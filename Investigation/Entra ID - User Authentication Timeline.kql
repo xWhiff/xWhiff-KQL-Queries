@@ -1,3 +1,27 @@
+// =============================================================================
+// Title:          Entra ID - User Authentication Timeline
+// Type:           Investigation
+// Platform:       Microsoft Sentinel / Log Analytics
+// Description:    Condensed authentication timeline for one user: interactive sign-ins one
+//                 per row, non-interactive sign-ins grouped per hour / IP / app / outcome, and
+//                 audit events that changed their password or MFA / security info.
+//
+// MITRE ATT&CK:   T1078.004 - Valid Accounts: Cloud Accounts;
+//                 T1556.006 - Modify Authentication Process: Multi-Factor Authentication
+// Data sources:   SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs
+// References:     https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-sign-ins
+//
+// How to use:     Set user (UPN) and lookback. The Events column shows how many
+//                 non-interactive sign-ins each grouped row stands for. Use the Sign-in Logs
+//                 query when you need every individual sign-in.
+// Tuning / FPs:   Add OperationName keywords to keyOps to include more audit events.
+//
+// Author:         xWhiff
+// Created:        2026-11-14
+// Updated:        2026-11-17 - header added (query unchanged)
+// Version:        1.0
+// =============================================================================
+
 let user = "user@contoso.com";
 let lookback = 7d;
 let keyOps = dynamic(["password", "security info", "authentication method", "StrongAuthentication", "Update user"]);

@@ -1,3 +1,24 @@
+// =============================================================================
+// Title:          IOC Hunting
+// Type:           Template
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Reusable hash sweep: looks for a list of MD5 / SHA1 / SHA256 hashes in
+//                 file events, process events and email attachments over 30 days.
+//
+// MITRE ATT&CK:   N/A - fill in for the campaign being hunted
+// Data sources:   DeviceFileEvents, DeviceProcessEvents, EmailAttachmentInfo, EmailEvents
+// References:     N/A - add the source and date of the IOC list
+//
+// How to use:     Replace the placeholder values in IOC with the hashes to hunt.
+//                 Email attachments are only matched on SHA256.
+// Tuning / FPs:   IOCs go stale quickly; note where and when the list came from.
+//
+// Author:         xWhiff
+// Created:        2026-07-03
+// Updated:        2026-11-17 - header added (query unchanged)
+// Version:        1.0
+// =============================================================================
+
 let IOC = dynamic(["hash", "hash"]);
 let DeviceFileHunt = (
     DeviceFileEvents

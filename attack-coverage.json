@@ -40,20 +40,32 @@
     },
     {
       "techniqueID": "T1059.001",
-      "score": 1,
-      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "score": 2,
+      "comment": "NodeJS - Child Shell Process Baseline; ClickFix - Multi-Stage Attack Chain Correlation",
       "showSubtechniques": true
     },
     {
       "techniqueID": "T1059.003",
+      "score": 2,
+      "comment": "NodeJS - Child Shell Process Baseline; ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1059.004",
       "score": 1,
-      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "comment": "NodeJS - Child Shell Process Baseline",
       "showSubtechniques": true
     },
     {
       "techniqueID": "T1071.001",
       "score": 1,
       "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1078.004",
+      "score": 2,
+      "comment": "Entra ID - Sign-in Logs; Entra ID - User Authentication Timeline",
       "showSubtechniques": true
     },
     {
@@ -78,6 +90,12 @@
       "techniqueID": "T1140",
       "score": 1,
       "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1190",
+      "score": 1,
+      "comment": "NodeJS - Child Shell Process Baseline",
       "showSubtechniques": true
     },
     {
@@ -114,6 +132,12 @@
       "techniqueID": "T1547.001",
       "score": 1,
       "comment": "DeviceFileEvents - Suspicious File Activity Triage",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1556.006",
+      "score": 2,
+      "comment": "Entra ID - Sign-in Logs; Entra ID - User Authentication Timeline",
       "showSubtechniques": true
     },
     {

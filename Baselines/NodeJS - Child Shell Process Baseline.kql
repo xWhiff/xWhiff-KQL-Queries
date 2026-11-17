@@ -1,3 +1,30 @@
+// =============================================================================
+// Title:          NodeJS - Child Shell Process Baseline
+// Type:           Baseline
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Baselines the shells and tools that Node.js starts (sh, bash, cmd,
+//                 PowerShell, curl, python, whoami...) over 29 days, then flags command-line
+//                 patterns seen in the last day that were never seen before. A Node app that
+//                 suddenly spawns new shell commands may have been exploited.
+//
+// MITRE ATT&CK:   T1190 - Exploit Public-Facing Application;
+//                 T1059.004 - Command and Scripting Interpreter: Unix Shell;
+//                 T1059.001 - PowerShell; T1059.003 - Windows Command Shell
+// Data sources:   DeviceProcessEvents
+// References:     https://attack.mitre.org/techniques/T1190/
+//
+// How to use:     Run daily. Rows with IsNew = true are patterns not seen in the
+//                 previous 29 days; check Example and Parent for those first.
+// Tuning / FPs:   Build tools and dev servers (npm scripts, bundlers) spawn shells all the
+//                 time; numbers are replaced with N so changing ports / PIDs don't create
+//                 new patterns. Add or remove binaries in the tools list.
+//
+// Author:         xWhiff
+// Created:        2026-10-28
+// Updated:        2026-11-17 - header added (query unchanged)
+// Version:        1.0
+// =============================================================================
+
 let tools = dynamic(["sh","bash","dash","zsh","cmd.exe","powershell.exe","pwsh","pwsh.exe",
   "curl","curl.exe","wget","nc","ncat","python","python3","perl",
   "whoami","whoami.exe","id","uname","certutil.exe"]);

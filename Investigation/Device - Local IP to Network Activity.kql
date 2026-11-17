@@ -1,3 +1,28 @@
+// =============================================================================
+// Title:          Device - Local IP to Network Activity
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from a local or VPN IP in an alert, works out which device had it
+//                 at the time, and lists every network connection that device made around the
+//                 alert, with a three-level process tree (grandparent > parent > process).
+//                 Flags watched IPs, a target domain, and public IPs with no URL.
+//
+// MITRE ATT&CK:   N/A - general network triage for any alert
+// Data sources:   DeviceNetworkEvents, DeviceNetworkInfo, DeviceProcessEvents
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicenetworkevents-table
+//
+// How to use:     Fill in the REPLACE inputs: localIP, alertTime (UTC) and watchIPs; domain
+//                 is optional. Widen window if the alert time is approximate. Results are in
+//                 time order; look at Flag first.
+// Tuning / FPs:   If no device is found, the IP may have changed hands (DHCP / VPN pool):
+//                 check the alert time and widen the DeviceNetworkInfo range in Step 1.
+//
+// Author:         xWhiff
+// Created:        2026-11-14
+// Updated:        2026-11-17 - header added (query unchanged)
+// Version:        1.0
+// =============================================================================
+
 // ---- Inputs ----
 let localIP = "192.0.2.10";                     // REPLACE: local / VPN IP from the alert
 let alertTime = datetime(2026-01-01 00:00:00);  // REPLACE: alert time (UTC)
