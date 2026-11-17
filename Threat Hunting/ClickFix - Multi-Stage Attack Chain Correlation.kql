@@ -1,8 +1,40 @@
-// Title: Ultimate ClickFix Detection: Multi-Stage Attack Chain Correlation
-// Description: Consolidates every ClickFix attack-chain stage into one correlated rule - RunMRU paste-execute, CAPTCHA-lure download cradles, Windows Terminal RunMRU-evasion, FileFix/DownloadFix zip staging, hidden-window PowerShell, string-concatenation obfuscated domains, fileless AES/TripleDES runspace payloads, masqueraded drops with empty PE OriginalFileName (incl. C:\Users\Public), COM hijack persistence with DLL drop, WMI hardware recon, LOLBin abuse from clipboard-paste, non-standard AppData DLL side-load staging, and explorer/terminal-spawned interpreters that immediately beacon out. Emits a DetectionCategory/MatchedPattern per hit and elevates confidence when multiple sub-patterns chain on the same device within an hour.
-// MITRE ATT&CK: T1204.004 - User Execution: Malicious Copy and Paste (related: T1059.001, T1059.003, T1027, T1036.005, T1546.015, T1105, T1047, T1082, T1218.007, T1218.005, T1560.001, T1564.003, T1574.002, T1071.001, T1112, T1140, T1620)
-// Author: Ethan Andrews
-// Reference: https://detections.ai/inspirations/019f1fb9-12b3-73b8-9837-8448644824ee, https://detections.ai/inspirations/019f1fb9-12f1-74a8-9b67-88b25a63d0b2, https://detections.ai/inspirations/019f1fb9-132a-761e-b1f1-30fb8a573b45, https://detections.ai/inspirations/019f1fb9-1369-70f9-a198-49e1cd4a8999
+// =============================================================================
+// Title:          Ultimate ClickFix Detection: Multi-Stage Attack Chain Correlation
+// Type:           Threat Hunting
+// Platform:       Microsoft Sentinel / unified Defender portal (uses TimeGenerated)
+// Description:    Consolidates every ClickFix attack-chain stage into one correlated rule -
+//                 RunMRU paste-execute, CAPTCHA-lure download cradles, Windows Terminal
+//                 RunMRU-evasion, FileFix/DownloadFix zip staging, hidden-window PowerShell,
+//                 string-concatenation obfuscated domains, fileless AES/TripleDES runspace
+//                 payloads, masqueraded drops with empty PE OriginalFileName (incl.
+//                 C:\Users\Public), COM hijack persistence with DLL drop, WMI hardware recon,
+//                 LOLBin abuse from clipboard-paste, non-standard AppData DLL side-load
+//                 staging, and explorer/terminal-spawned interpreters that immediately beacon
+//                 out. Emits a DetectionCategory/MatchedPattern per hit and elevates
+//                 confidence when multiple sub-patterns chain on the same device within an hour.
+//
+// MITRE ATT&CK:   T1204.004 - User Execution: Malicious Copy and Paste (related: T1059.001,
+//                 T1059.003, T1027, T1036.005, T1546.015, T1105, T1047, T1082, T1218.007,
+//                 T1218.005, T1560.001, T1564.003, T1574.002, T1071.001, T1112, T1140, T1620)
+// Data sources:   DeviceProcessEvents, DeviceRegistryEvents, DeviceFileEvents, DeviceEvents,
+//                 DeviceNetworkEvents
+// References:     https://detections.ai/inspirations/019f1fb9-12b3-73b8-9837-8448644824ee
+//                 https://detections.ai/inspirations/019f1fb9-12f1-74a8-9b67-88b25a63d0b2
+//                 https://detections.ai/inspirations/019f1fb9-132a-761e-b1f1-30fb8a573b45
+//                 https://detections.ai/inspirations/019f1fb9-1369-70f9-a198-49e1cd4a8999
+//
+// How to use:     Set TimeWindow (default 1d). Results are grouped per device, user and
+//                 hour; rows need a primary signal or two or more chained sub-patterns.
+//                 Start with Confidence = Critical / High.
+// Tuning / FPs:   The original author's exclusions are inline (RMM agent scripts,
+//                 per-user Microsoft and CAD add-in COM registrations); replace them with
+//                 the tools that are noisy in your environment.
+//
+// Author:         Ethan Andrews
+// Created:        2026-07-03
+// Updated:        2026-11-17 - full header added by xWhiff (query logic unchanged)
+// Version:        1.0
+// =============================================================================
 let TimeWindow = 1d;
 let RunMRU_PasteExecute = DeviceRegistryEvents 
 | where TimeGenerated > ago(TimeWindow) 
