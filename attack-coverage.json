@@ -1,0 +1,165 @@
+{
+  "name": "hunting-grounds coverage",
+  "description": "MITRE ATT&CK techniques covered by queries in xWhiff/hunting-grounds. Score = number of queries. Generated from query headers.",
+  "domain": "enterprise-attack",
+  "versions": {
+    "layer": "4.5"
+  },
+  "sorting": 3,
+  "hideDisabled": false,
+  "techniques": [
+    {
+      "techniqueID": "T1027",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1036.005",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1036.007",
+      "score": 1,
+      "comment": "DeviceFileEvents - Suspicious File Activity Triage",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1047",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1053.005",
+      "score": 1,
+      "comment": "DeviceFileEvents - Suspicious File Activity Triage",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1059.001",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1059.003",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1071.001",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1082",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1105",
+      "score": 2,
+      "comment": "DeviceFileEvents - Suspicious File Activity Triage; ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1112",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1140",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1204.002",
+      "score": 1,
+      "comment": "DeviceFileEvents - Suspicious File Activity Triage",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1204.004",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1218.005",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1218.007",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1546.015",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1547.001",
+      "score": 1,
+      "comment": "DeviceFileEvents - Suspicious File Activity Triage",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1560.001",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1564.003",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1566.001",
+      "score": 1,
+      "comment": "DeviceFileEvents - Suspicious File Activity Triage",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1570",
+      "score": 1,
+      "comment": "DeviceFileEvents - Suspicious File Activity Triage",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1574.002",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1620",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    }
+  ],
+  "gradient": {
+    "colors": [
+      "#c6dbef",
+      "#08519c"
+    ],
+    "minValue": 0,
+    "maxValue": 3
+  },
+  "legendItems": []
+}

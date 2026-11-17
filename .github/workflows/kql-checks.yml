@@ -1,0 +1,34 @@
+# Runs on every pull request into main.
+#  1. Query headers: changed .kql files must have a complete header (fails the PR);
+#     older untouched queries only get a warning, so they don't block anything.
+#  2. Catalogue: the README query table and attack-coverage.json must be up to date.
+#     If this fails, run:  python3 .github/scripts/kql_catalogue.py build  and commit.
+name: KQL checks
+
+on:
+  pull_request:
+    branches: [main]
+
+# Read-only: this workflow never writes to the repo.
+permissions:
+  contents: read
+
+jobs:
+  kql-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the PR
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0            # full history, so we can diff against main
+          persist-credentials: false
+
+      - name: Check query headers
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python3 .github/scripts/kql_catalogue.py headers --base "origin/$BASE_REF"
+
+      - name: Check README catalogue and ATT&CK layer are up to date
+        if: ${{ !cancelled() }}     # run even if the header check failed, to show both results
+        run: python3 .github/scripts/kql_catalogue.py build --check
