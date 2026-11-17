@@ -1,9 +1,9 @@
 // ---- Inputs ----
-let localIP = "10.200.0.25";                    // local / VPN IP from the alert
-let alertTime = datetime(2026-11-14 08:00:00);  // alert time (UTC)
+let localIP = "192.0.2.10";                     // REPLACE: local / VPN IP from the alert
+let alertTime = datetime(2026-01-01 00:00:00);  // REPLACE: alert time (UTC)
 let window = 10m;                               // 10 mins either side
 let domain = "";                                // optional - leave "" if none
-let watchIPs = dynamic(["1.1.1.1", "2.2.2.2", "3.3.3.3"]);  // your 3 IPs
+let watchIPs = dynamic(["203.0.113.1", "203.0.113.2", "203.0.113.3"]);  // REPLACE: external IPs of interest
 // ---- Step 1: resolve local IP to device ----
 // First try the network events themselves (best for VPN IPs)
 let devFromEvents = toscalar(

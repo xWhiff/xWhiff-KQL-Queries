@@ -1,6 +1,6 @@
 # auditd for SOC Analysts: Runbook and Cheat Sheet
 
-Oct 12, 2026 · @Joe
+Oct 12, 2026 · @xWhiff
 
 ## How to use this guide
 
@@ -10,17 +10,17 @@ This guide gets an analyst who has never triaged Linux to a confident first call
 - **What it assumes:** you can run a SIEM query and you know the SOC triage basics (scope, contain, escalate).
 - **What it does not cover:** writing auditd rules from scratch or tuning kernel performance. Detection engineering owns those.
 
-**Before you paste anything:** never put raw logs from a client or our estate into tickets, chat tools or AI assistants without sanitising them. Replace hostnames, usernames, IPs, file paths that name a client, and any command arguments that carry secrets.
+**Before you paste anything:** never put raw logs from your organisation or a client into tickets, chat tools or AI assistants without sanitising them. Replace hostnames, usernames, IPs, file paths that name a client, and any command arguments that carry secrets.
 
 This guide works with the audit rules your team has already deployed. Key names such as `actions` or `process_creation` are examples only: swap in the keys from your own rules (see Layer 3). Queries assume Sentinel (KQL) first with Splunk (SPL) alongside, and raw auditd shipped over syslog.
 
 ## Layer 1: What auditd is
 
-**In one line:** auditd is the Linux kernel's own flight recorder. It writes down who ran what, which files they touched and which system calls they made, according to rules we give it.
+**In one line:** auditd is the Linux kernel's own flight recorder. It writes down who ran what, which files they touched and which system calls they made, according to the rules you give it.
 
 **Analogy.** Think of a building's CCTV plus its door-badge log. The rules decide which doors have cameras. If a door has no camera, nothing is recorded, however bad the activity was. That is the single most important thing to remember: *no rule, no log*.
 
-**Why it matters to the SOC.** Most Linux servers have no EDR, or an EDR with patchy coverage. auditd is often our only record of process execution, privilege changes and sensitive file access on those hosts. It is the Linux equivalent of Windows Security event 4688 (process creation) plus Sysmon file and registry events, but rule-driven.
+**Why it matters to the SOC.** Most Linux servers have no EDR, or an EDR with patchy coverage. auditd is often the only record of process execution, privilege changes and sensitive file access on those hosts. It is the Linux equivalent of Windows Security event 4688 (process creation) plus Sysmon file and registry events, but rule-driven.
 
 **How it works, simply.**
 
@@ -127,9 +127,9 @@ To see what is live on a host, run `auditctl -l`. Never assume the file on disk 
 
 ### Map your own keys
 
-Our rules are already defined, so this table is a template. Pull the live key list with `auditctl -l | grep -o 'key=[^ ]*' | sort -u` (or from `/etc/audit/rules.d/`), then replace each example key below with ours. Keep the *triage meaning* column: that is what analysts need.
+Your rules are likely already defined, so this table is a template. Pull the live key list with `auditctl -l | grep -o 'key=[^ ]*' | sort -u` (or from `/etc/audit/rules.d/`), then replace each example key below with yours. Keep the *triage meaning* column: that is what analysts need.
 
-| Example key (replace with ours) | What triggers it | Triage meaning |
+| Example key (replace with yours) | What triggers it | Triage meaning |
 | --- | --- | --- |
 | `process_creation` | Every `execve` | Your process log. Context for everything else; too noisy to alert on alone. |
 | `etcpasswd`, `etcgroup` | Writes to `/etc/passwd`, `/etc/shadow`, `/etc/group`, `/etc/gshadow` | Accounts or passwords changed. |
@@ -241,7 +241,7 @@ Only with IR approval, and record every command you run.
 
 Five playbooks, in suggested rollout order: suspicious execution, privilege escalation, persistence, audit tampering, credential access. Each gives the ATT&CK mapping, what the alert looks like, a starter query, likely false positives and when to escalate.
 
-Key names in the queries are examples. Replace them with our keys from the Layer 3 table before saving any query as an analytics rule.
+Key names in the queries are examples. Replace them with your keys from the Layer 3 table before saving any query as an analytics rule.
 
 ### Shared parser (save once as a Sentinel function)
 
@@ -352,7 +352,7 @@ index=linux sourcetype=linux_audit type=SYSCALL success=yes
 
 **Check next:** read the new or changed file (cron line, unit file `ExecStart=`, the added SSH key's comment and fingerprint); check whether the referenced script lives in `/tmp`, `/dev/shm`, `/var/tmp` or a hidden folder; check whether a service or timer was enabled straight after (`systemctl` in `process_creation`).
 
-**Check your coverage:** confirm our rules watch every user's `~/.ssh/authorized_keys`, not only `/root/.ssh`. Many rule sets only cover root, so a new key on a compromised user account would not alert. If it is missing, raise it with detection engineering.
+**Check your coverage:** confirm your rules watch every user's `~/.ssh/authorized_keys`, not only `/root/.ssh`. Many rule sets only cover root, so a new key on a compromised user account would not alert. If it is missing, raise it with detection engineering.
 
 **Likely false positives:** package installs and upgrades (on RHEL-family hosts `yum` and `dnf` run as `python3`), configuration management, and admins using `crontab -e`. **Tuning:** suppress during approved patch windows by host group, not permanently.
 
@@ -403,7 +403,7 @@ index=linux sourcetype=linux_audit (type=CONFIG_CHANGE OR type=DAEMON_END OR typ
 
 **What it looks like:** a real user failing to open files under `/etc` (`unauthedfileaccess`, `success=no`), `ptrace` activity (`tracing`) from an unexpected program, or a `process_creation` command line that mentions `/etc/shadow`, `unshadow`, `id_rsa`, or `/proc/<pid>/mem`.
 
-**Check your coverage, the most important check in this guide:** many rule sets watch `/etc/shadow` for *writes* (`-p wa`) but not *reads*. If ours does the same, a root attacker who copies the file to crack hashes offline leaves no event. Confirm with `auditctl -l | grep shadow`. If reads are not covered, raise it with detection engineering and rely on the command-line hunt below.
+**Check your coverage, the most important check in this guide:** many rule sets watch `/etc/shadow` for *writes* (`-p wa`) but not *reads*. If yours does the same, a root attacker who copies the file to crack hashes offline leaves no event. Confirm with `auditctl -l | grep shadow`. If reads are not covered, raise it with detection engineering and rely on the command-line hunt below.
 
 ```kusto
 // Failed access to /etc by real users, grouped per user and host
@@ -474,12 +474,12 @@ Work through these before your first solo auditd alert. Answers follow.
 1. User 1002 logged in interactively, became root, and edited the sudoers file with vim.
 2. Two events: serial 51022 and serial 51023.
 3. Playbook A, critical until proven otherwise: a web service fetching something then starting a shell is the classic web-exploit pattern.
-4. No. If our rules only record writes to `/etc/shadow`, a read leaves no event at all. Hunt the command lines instead and raise the coverage gap.
+4. No. If your rules only record writes to `/etc/shadow`, a read leaves no event at all. Hunt the command lines instead and raise the coverage gap.
 5. Any of: a change ticket or patch window; who ran it (`auid`, SSH source); whether other hosts changed at the same time; what the host did in the minutes before.
 
 ### Next steps for analysts
 
-- **Lab:** build a throwaway Ubuntu VM, install `auditd`, load a copy of our production audit rules, then run harmless commands (`sudo -l`, `crontab -e`, `cat /etc/passwd`) and read the results with `ausearch -i`.
+- **Lab:** build a throwaway Ubuntu VM, install `auditd`, load a copy of your audit rules, then run harmless commands (`sudo -l`, `crontab -e`, `cat /etc/passwd`) and read the results with `ausearch -i`.
 - **Practice:** use the [Atomic Red Team](https://github.com/redcanaryco/atomic-red-team) tests for Linux in that lab VM only, and check which ones auditd catches.
 - **Read:** the [Red Hat guide to the Linux audit system](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/security_hardening/auditing-the-system_security-hardening) for field meanings and record types.
 - **Related topics:** Linux process trees and `/proc`; SSH log analysis in `/var/log/auth.log` or `/var/log/secure`; Sigma rules for auditd in the [SigmaHQ repository](https://github.com/SigmaHQ/sigma/tree/master/rules/linux/auditd).
@@ -549,14 +549,14 @@ Work through these before your first solo auditd alert. Answers follow.
 - [Red Hat: Auditing the system (RHEL 9)](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/security_hardening/auditing-the-system_security-hardening): the clearest vendor walkthrough of records, fields and tools.
 - [Linux audit field dictionary](https://github.com/linux-audit/audit-documentation/blob/main/specs/fields/field-dictionary.csv) and [record type dictionary](https://github.com/linux-audit/audit-documentation/blob/main/specs/messages/message-dictionary.csv): authoritative meanings for every field and `type=`.
 - [Linux syscall table (x86\_64)](https://filippo.io/linux-syscall-table/): look up a `syscall=` number.
-- [Laurel](https://github.com/threathunters-io/laurel): turns auditd records into one decoded JSON event, if we ever change collection.
+- [Laurel](https://github.com/threathunters-io/laurel): turns auditd records into one decoded JSON event, if you ever change collection.
 
 ### SIEM
 
 - [Microsoft Sentinel: Syslog via AMA](https://learn.microsoft.com/en-us/azure/sentinel/connect-cef-syslog-ama): how Linux logs reach the `Syslog` table.
 - KQL functions used here: [extract](https://learn.microsoft.com/en-us/kusto/query/extract-function), [replace\_regex](https://learn.microsoft.com/en-us/kusto/query/replace-regex-function), [url\_decode](https://learn.microsoft.com/en-us/kusto/query/url-decode-function).
 - [Splunk Add-on for Unix and Linux](https://splunkbase.splunk.com/app/833): source of the `linux_audit` sourcetype and field extractions.
-- [SigmaHQ auditd rules](https://github.com/SigmaHQ/sigma/tree/master/rules/linux/auditd): community detections to compare against our analytics.
+- [SigmaHQ auditd rules](https://github.com/SigmaHQ/sigma/tree/master/rules/linux/auditd): community detections to compare against your analytics.
 
 ### Threat context
 
@@ -570,4 +570,4 @@ Work through these before your first solo auditd alert. Answers follow.
 - [ICO: Report a breach](https://ico.org.uk/for-organisations/report-a-breach/) (UK GDPR, 72 hours).
 - [NCSC: Report an incident](https://report.ncsc.gov.uk/).
 - [GOV.UK: Cyber Security and Resilience Bill incident reporting factsheet](https://www.gov.uk/government/publications/deleted-cyber-security-and-resilience-network-and-information-systems-bill-factsheets/incident-reporting).
-- [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks): the Linux benchmarks' audit sections are a useful coverage checklist for our rules.
+- [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks): the Linux benchmarks' audit sections are a useful coverage checklist for your rules.
