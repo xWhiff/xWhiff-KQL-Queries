@@ -32,6 +32,12 @@ Built automatically from each query's header and the `Docs/` folder.
 |---|---|---|---|
 | [ClickFix - Multi-Stage Attack Chain Correlation](Threat%20Hunting/ClickFix%20-%20Multi-Stage%20Attack%20Chain%20Correlation.kql) | Sentinel / unified portal | T1027, T1036.005, T1047, T1059.001, T1059.003, T1071.001, T1082, T1105, T1112, T1140, T1204.004, T1218.005, T1218.007, T1546.015, T1560.001, T1564.003, T1574.002, T1620 | DeviceProcessEvents, DeviceRegistryEvents, DeviceFileEvents, DeviceEvents, DeviceNetworkEvents |
 
+### Detection
+
+| Query | Platform | MITRE ATT&CK | Data sources |
+|---|---|---|---|
+| [Entra ID - MFA Fatigue](Detection/Entra%20ID%20-%20MFA%20Fatigue.kql) | Sentinel | T1078.004, T1621 | SigninLogs |
+
 ### Investigation
 
 | Query | Platform | MITRE ATT&CK | Data sources |
