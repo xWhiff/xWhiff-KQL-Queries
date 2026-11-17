@@ -73,8 +73,31 @@ def collect() -> list[dict]:
             "path": path.relative_to(REPO).as_posix(),
             "techniques": sorted(set(TECHNIQUE_RE.findall(fields.get("MITRE ATT&CK", "")))),
             "sources": fields.get("Data sources", ""),
+            "platform": short_platform(fields.get("Platform", "")),
         })
     return rows
+
+
+def short_platform(value: str) -> str:
+    """Turn the header's Platform text into a short label for the catalogue."""
+    sentinel, defender = "sentinel" in value.lower(), "defender" in value.lower()
+    if sentinel and defender:
+        return "Sentinel / unified portal"
+    if sentinel:
+        return "Sentinel"
+    if defender:
+        return "Defender XDR"
+    return value or "-"
+
+
+def collect_docs() -> list[tuple[str, str, str]]:
+    """(file name, link, first '# ' heading) for every Markdown file in Docs/."""
+    docs = []
+    for path in sorted((REPO / "Docs").glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), path.stem)
+        docs.append((path.stem, path.relative_to(REPO).as_posix().replace(" ", "%20"), title))
+    return docs
 
 
 def render_catalogue(rows: list[dict]) -> str:
@@ -83,10 +106,16 @@ def render_catalogue(rows: list[dict]) -> str:
         group = [r for r in rows if r["folder"] == folder]
         if not group:
             continue
-        lines += [f"### {folder}", "", "| Query | MITRE ATT&CK | Data sources |", "|---|---|---|"]
+        lines += [f"### {folder}", "", "| Query | Platform | MITRE ATT&CK | Data sources |", "|---|---|---|---|"]
         for r in group:
             link = r["path"].replace(" ", "%20")
-            lines.append(f"| [{r['name']}]({link}) | {', '.join(r['techniques']) or '-'} | {r['sources'] or '-'} |")
+            lines.append(f"| [{r['name']}]({link}) | {r['platform']} | "
+                         f"{', '.join(r['techniques']) or '-'} | {r['sources'] or '-'} |")
+        lines.append("")
+    docs = collect_docs()
+    if docs:
+        lines += ["### Docs", ""]
+        lines += [f"- [{name}]({link}): {title}" for name, link, title in docs]
         lines.append("")
     lines.append(END)
     return "\n".join(lines)

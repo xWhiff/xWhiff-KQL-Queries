@@ -19,7 +19,7 @@ Files are named `<Threat or Topic> - <What it does>.kql`, e.g. `ClickFix - Multi
 
 ## 📚 Query catalogue
 
-Built automatically from each query's header.
+Built automatically from each query's header and the `Docs/` folder.
 
 🗺️ **[MITRE ATT&CK coverage map →](https://mitre-attack.github.io/attack-navigator/#layerURL=https%3A%2F%2Fraw.githubusercontent.com%2FxWhiff%2Fhunting-grounds%2Fmain%2Fattack-coverage.json)** (opens in MITRE ATT&CK Navigator; darker = more queries)
 
@@ -28,30 +28,34 @@ Built automatically from each query's header.
 
 ### Threat Hunting
 
-| Query | MITRE ATT&CK | Data sources |
-|---|---|---|
-| [ClickFix - Multi-Stage Attack Chain Correlation](Threat%20Hunting/ClickFix%20-%20Multi-Stage%20Attack%20Chain%20Correlation.kql) | T1027, T1036.005, T1047, T1059.001, T1059.003, T1071.001, T1082, T1105, T1112, T1140, T1204.004, T1218.005, T1218.007, T1546.015, T1560.001, T1564.003, T1574.002, T1620 | - |
+| Query | Platform | MITRE ATT&CK | Data sources |
+|---|---|---|---|
+| [ClickFix - Multi-Stage Attack Chain Correlation](Threat%20Hunting/ClickFix%20-%20Multi-Stage%20Attack%20Chain%20Correlation.kql) | Sentinel / unified portal | T1027, T1036.005, T1047, T1059.001, T1059.003, T1071.001, T1082, T1105, T1112, T1140, T1204.004, T1218.005, T1218.007, T1546.015, T1560.001, T1564.003, T1574.002, T1620 | DeviceProcessEvents, DeviceRegistryEvents, DeviceFileEvents, DeviceEvents, DeviceNetworkEvents |
 
 ### Investigation
 
-| Query | MITRE ATT&CK | Data sources |
-|---|---|---|
-| [Device - Local IP to Network Activity](Investigation/Device%20-%20Local%20IP%20to%20Network%20Activity.kql) | - | DeviceNetworkEvents, DeviceNetworkInfo, DeviceProcessEvents |
-| [Entra ID - Sign-in Logs](Investigation/Entra%20ID%20-%20Sign-in%20Logs.kql) | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
-| [Entra ID - User Authentication Timeline](Investigation/Entra%20ID%20-%20User%20Authentication%20Timeline.kql) | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
+| Query | Platform | MITRE ATT&CK | Data sources |
+|---|---|---|---|
+| [Device - Local IP to Network Activity](Investigation/Device%20-%20Local%20IP%20to%20Network%20Activity.kql) | Defender XDR | - | DeviceNetworkEvents, DeviceNetworkInfo, DeviceProcessEvents |
+| [Entra ID - Sign-in Logs](Investigation/Entra%20ID%20-%20Sign-in%20Logs.kql) | Sentinel | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
+| [Entra ID - User Authentication Timeline](Investigation/Entra%20ID%20-%20User%20Authentication%20Timeline.kql) | Sentinel | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
 
 ### Baselines
 
-| Query | MITRE ATT&CK | Data sources |
-|---|---|---|
-| [NodeJS - Child Shell Process Baseline](Baselines/NodeJS%20-%20Child%20Shell%20Process%20Baseline.kql) | T1059.001, T1059.003, T1059.004, T1190 | DeviceProcessEvents |
+| Query | Platform | MITRE ATT&CK | Data sources |
+|---|---|---|---|
+| [NodeJS - Child Shell Process Baseline](Baselines/NodeJS%20-%20Child%20Shell%20Process%20Baseline.kql) | Defender XDR | T1059.001, T1059.003, T1059.004, T1190 | DeviceProcessEvents |
 
 ### Templates
 
-| Query | MITRE ATT&CK | Data sources |
-|---|---|---|
-| [DeviceFileEvents - Suspicious File Activity Triage](Templates/DeviceFileEvents%20-%20Suspicious%20File%20Activity%20Triage.kql) | T1036.007, T1053.005, T1105, T1204.002, T1547.001, T1566.001, T1570 | DeviceFileEvents |
-| [IOC Hunting](Templates/IOC%20Hunting.kql) | - | DeviceFileEvents, DeviceProcessEvents, EmailAttachmentInfo, EmailEvents |
+| Query | Platform | MITRE ATT&CK | Data sources |
+|---|---|---|---|
+| [DeviceFileEvents - Suspicious File Activity Triage](Templates/DeviceFileEvents%20-%20Suspicious%20File%20Activity%20Triage.kql) | Defender XDR | T1036.007, T1053.005, T1105, T1204.002, T1547.001, T1566.001, T1570 | DeviceFileEvents |
+| [IOC Hunting](Templates/IOC%20Hunting.kql) | Defender XDR | - | DeviceFileEvents, DeviceProcessEvents, EmailAttachmentInfo |
+
+### Docs
+
+- [auditd Runbook](Docs/auditd%20Runbook.md): auditd for SOC Analysts: Runbook and Cheat Sheet
 
 <!-- CATALOGUE:END -->
 

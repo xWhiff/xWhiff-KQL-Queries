@@ -6,35 +6,51 @@
 //                 file events, process events and email attachments over 30 days.
 //
 // MITRE ATT&CK:   N/A - fill in for the campaign being hunted
-// Data sources:   DeviceFileEvents, DeviceProcessEvents, EmailAttachmentInfo, EmailEvents
+// Data sources:   DeviceFileEvents, DeviceProcessEvents, EmailAttachmentInfo
 // References:     N/A - add the source and date of the IOC list
 //
-// How to use:     Replace the placeholder values in IOC with the hashes to hunt.
-//                 Email attachments are only matched on SHA256.
+// How to use:     Replace the placeholder values in IOC with the hashes to hunt (any
+//                 case: matching ignores upper / lower case). Email attachments are
+//                 only matched on SHA256. The Table column says where each hit came from.
 // Tuning / FPs:   IOCs go stale quickly; note where and when the list came from.
 //
 // Author:         xWhiff
 // Created:        2026-07-03
-// Updated:        2026-11-17 - header added (query unchanged)
-// Version:        1.0
+// Updated:        2026-11-17 - Table column no longer relies on Type (not in Advanced
+//                 Hunting); case-insensitive hash matching; email join removed
+//                 (EmailAttachmentInfo already has the recipient); lookback input
+// Version:        1.1
 // =============================================================================
 
-let IOC = dynamic(["hash", "hash"]);
-let DeviceFileHunt = (
+// ---- Inputs ----
+let lookback = 30d;                   // how far back to search (Advanced Hunting keeps 30 days)
+let IOC = dynamic(["hash", "hash"]);  // REPLACE: MD5, SHA1 or SHA256 hashes - note the source and date
+
+// ---- Step 1: Known-bad files written to disk ----
+// Catches the file landing even if it was never run.
+let DeviceFileHunt =
     DeviceFileEvents
-    | where Timestamp > ago(30d)
-    | where MD5 in (IOC) or SHA1 in (IOC) or SHA256 in (IOC)
-    | project Table = Type, Timestamp, DeviceName, FileName, MD5, SHA1, SHA256);
-let DeviceProcessHunt = (
+    | where Timestamp > ago(lookback)
+    | where MD5 in~ (IOC) or SHA1 in~ (IOC) or SHA256 in~ (IOC)   // in~ ignores case: reports often use upper case
+    | project Table = "DeviceFileEvents", Timestamp, DeviceName, FileName, MD5, SHA1, SHA256;
+
+// ---- Step 2: Processes started from a known-bad file ----
+let DeviceProcessHunt =
     DeviceProcessEvents
-    | where Timestamp > ago(30d)
-    | where MD5 in (IOC) or SHA1 in (IOC) or SHA256 in (IOC)
-    | project Table = Type, Timestamp, DeviceName, FileName, MD5, SHA1, SHA256);
-let EmailAttachmentHunt = ( 
+    | where Timestamp > ago(lookback)
+    | where MD5 in~ (IOC) or SHA1 in~ (IOC) or SHA256 in~ (IOC)
+    | project Table = "DeviceProcessEvents", Timestamp, DeviceName, FileName, MD5, SHA1, SHA256;
+
+// ---- Step 3: Emails carrying a known-bad attachment ----
+// EmailAttachmentInfo only has SHA256, and already includes sender and recipient.
+let EmailAttachmentHunt =
     EmailAttachmentInfo
-    | where Timestamp > ago(30d)
-    | where SHA256 in (IOC)
-    | project Table = Type, Timestamp, NetworkMessageId, FileName, SHA256, SenderFromAddress
-    | join EmailEvents on NetworkMessageId
-    | project Table = Type, Timestamp, NetworkMessageId, FileName, SHA256, SenderFromAddress, RecipientEmailAddress);
+    | where Timestamp > ago(lookback)
+    | where SHA256 in~ (IOC)
+    | project Table = "EmailAttachmentInfo", Timestamp, NetworkMessageId, FileName, SHA256,
+              SenderFromAddress, RecipientEmailAddress;
+
+// ---- Output ----
+// isfuzzy=true means a table you don't license (e.g. no Defender for Office 365) won't break the query.
 union isfuzzy=true DeviceFileHunt, DeviceProcessHunt, EmailAttachmentHunt
+| sort by Timestamp desc
