@@ -15,7 +15,7 @@ The goal of this repository is to provide practical, well-documented queries tha
 | `Templates/` | Reusable skeletons (e.g. IOC hunt) with placeholder inputs. |
 | `Docs/` | Runbooks and write-ups. |
 
-Files are named `<Threat or Topic> - <What it does>.kql`, e.g. `CVE-2025-56383 - Notepad++ DLL Hijacking.kql`.
+Files are named `<Threat or Topic> - <What it does>.kql`, e.g. `ClickFix - Multi-Stage Attack Chain Correlation.kql`.
 
 ## 📚 Query catalogue
 
@@ -30,12 +30,7 @@ Built automatically from each query's header.
 
 | Query | MITRE ATT&CK | Data sources |
 |---|---|---|
-| [CVE-2025-56383 - Notepad++ DLL Hijacking](Threat%20Hunting/CVE-2025-56383%20-%20Notepad++%20DLL%20Hijacking.kql) | - | - |
-| [CVE-2026-111497 - NodeJS macOS Hunt](Threat%20Hunting/CVE-2026-111497%20-%20NodeJS%20macOS%20Hunt.kql) | - | - |
-| [CVE-2026-14191 - WinRAR RCE Detection](Threat%20Hunting/CVE-2026-14191%20-%20WinRAR%20RCE%20Detection.kql) | - | - |
-| [ClawdBot - Malware IOC Watchlist](Threat%20Hunting/ClawdBot%20-%20Malware%20IOC%20Watchlist.kql) | - | - |
 | [ClickFix - Multi-Stage Attack Chain Correlation](Threat%20Hunting/ClickFix%20-%20Multi-Stage%20Attack%20Chain%20Correlation.kql) | T1027, T1036.005, T1047, T1059.001, T1059.003, T1071.001, T1082, T1105, T1112, T1140, T1204.004, T1218.005, T1218.007, T1546.015, T1560.001, T1564.003, T1574.002, T1620 | - |
-| [LOLBAS - PowerShell AV Exclusion Commands](Threat%20Hunting/LOLBAS%20-%20PowerShell%20AV%20Exclusion%20Commands.kql) | - | - |
 
 ### Investigation
 
@@ -59,11 +54,5 @@ Built automatically from each query's header.
 | [IOC Hunting](Templates/IOC%20Hunting.kql) | - | - |
 
 <!-- CATALOGUE:END -->
-
-## ✅ Automatic checks
-
-Every pull request runs **KQL checks** (`.github/workflows/kql-checks.yml`), which make sure the catalogue above and `attack-coverage.json` are up to date. After adding or changing a query, run `python3 .github/scripts/kql_catalogue.py build` and commit the result.
-
-The catalogue's MITRE ATT&CK and Data sources columns come from each query's header (`// MITRE ATT&CK:` and `// Data sources:` lines), so queries without one show `-`.
 
 Happy Hunting! 🎯
