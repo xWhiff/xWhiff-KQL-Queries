@@ -1,0 +1,200 @@
+// =============================================================================
+// Title:          DeviceFileEvents - Suspicious File Activity Triage
+// Type:           Template
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Reusable triage query for DeviceFileEvents. Scores every file
+//                 create / modify / rename in scope against common red flags
+//                 (executable dropped by a script host or Office, double
+//                 extensions, startup/task folders, web downloads, remote SMB
+//                 writes, files rarely seen in the org) and lists the riskiest
+//                 first, with the reasons each one scored.
+//
+// MITRE ATT&CK:   T1105 - Ingress Tool Transfer; T1204.002 - User Execution: Malicious File;
+//                 T1566.001 - Spearphishing Attachment; T1036.007 - Masquerading: Double File Extension;
+//                 T1547.001 - Registry Run Keys / Startup Folder; T1053.005 - Scheduled Task;
+//                 T1570 - Lateral Tool Transfer
+// Data sources:   DeviceFileEvents
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicefileevents-table
+//                 https://attack.mitre.org/techniques/T1036/007/
+//
+// How to use:     1. Set startTime/endTime to the window you are triaging.
+//                 2. Optionally set targetDevice and/or targetUser to narrow it down.
+//                 3. Run it. Read the Reasons column on the top-scoring rows first.
+//                 4. Set minScore = 0 to see every file event in scope (raw triage),
+//                    or raise it to cut noise on a big window. With minScore = 0 on a
+//                    large window, Step 3 counts prevalence for every hash and is slow.
+//                 5. Pivot on a hit: SHA256 -> FileProfile / VirusTotal,
+//                    InitiatingProcess* -> DeviceProcessEvents, FileOriginUrl -> DeviceNetworkEvents.
+// Tuning / FPs:   Browser downloads of installers to Downloads score 3 (exe + download
+//                 + user folder) and will show at the default minScore; that is
+//                 intended, so they can be triaged. Software updaters, packaging/build
+//                 tools and IT deployment (SCCM, Intune) write executables to
+//                 ProgramData/Temp: add them to ExcludedInitiators or ExcludedFolders.
+//                 New scheduled tasks (\System32\Tasks\) score 3 on their own, so
+//                 software updaters registering tasks will show; exclude their writer.
+//                 Org prevalence needs SHA256, which is often empty for FileModified
+//                 events and large files, so those rows never get the "rare" point.
+//
+// Author:         xWhiff
+// Created:        2026-11-17
+// Updated:        2026-11-17 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs: scope ----
+let startTime    = ago(7d);           // start of window; for an incident use e.g. datetime(2026-11-17 09:00)
+let endTime      = now();             // end of window
+let targetDevice = "";                // device name, or "" for all devices (short name also matches the FQDN)
+let targetUser   = "";                // account name (no domain), or "" for all users
+let ActionTypes  = dynamic(["FileCreated", "FileModified", "FileRenamed"]);  // add "FileDeleted" to look for clean-up
+let minScore     = 3;                 // only show events scoring at least this; 0 = show everything in scope
+
+// ---- Inputs: what counts as suspicious ----
+// File types that can run code or carry something that does (archives, disk images, shortcuts).
+let RiskyExtensions = dynamic([
+    ".exe", ".dll", ".scr", ".com", ".pif", ".cpl", ".sys", ".msi", ".msix", ".appx",
+    ".ps1", ".psm1", ".bat", ".cmd", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta", ".jar",
+    ".lnk", ".url", ".chm", ".one", ".iso", ".img", ".vhd", ".vhdx",
+    ".zip", ".rar", ".7z", ".cab",
+    ".docm", ".xlsm", ".pptm", ".xll", ".xlam",                        // macro-enabled Office / Excel add-ins
+    ".sh", ".py", ".dylib", ".so", ".dmg", ".pkg"]);                  // macOS / Linux
+// Folders where users can write and malware likes to stage payloads.
+let StagingFolders = dynamic([
+    @"\Downloads\", @"\AppData\Local\Temp\", @"\AppData\Roaming\", @"\Users\Public\",
+    @"\ProgramData\", @"\Windows\Temp\", @"\PerfLogs\", @"\Content.Outlook\", @"\INetCache\",
+    "/tmp/", "/var/tmp/", "/dev/shm/", "/Users/Shared/"]);
+// Folders where a new file means something will run automatically (persistence).
+let PersistenceFolders = dynamic([
+    @"\Start Menu\Programs\Startup\", @"\Windows\System32\Tasks\", @"\Windows\Tasks\",
+    "/Library/LaunchAgents/", "/Library/LaunchDaemons/", "/etc/crontab", "/etc/cron.d/",
+    "/var/spool/cron/", "/etc/systemd/system/", "/etc/init.d/"]);
+// Script hosts: write files all the time, so they only score when the file is a risky type.
+let ScriptHosts = dynamic([
+    "powershell.exe", "pwsh.exe", "cmd.exe", "wscript.exe", "cscript.exe",
+    "rundll32.exe", "regsvr32.exe", "msbuild.exe", "installutil.exe"]);
+// Download-capable LOLBins: rarely write files legitimately, so they score whatever the
+// file type (payloads are often saved as .txt / .dat and decoded or renamed later).
+let DownloaderLolbins = dynamic([
+    "certutil.exe", "bitsadmin.exe", "curl.exe", "mshta.exe", "hh.exe", "ftp.exe",
+    "finger.exe", "esentutl.exe", "expand.exe"]);
+// Office apps: these should rarely write executables, so when they do it is a classic phishing sign.
+let OfficeWriters = dynamic([
+    "winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe", "onenote.exe", "msaccess.exe",
+    "mspub.exe", "eqnedt32.exe"]);
+// Points per red flag. Change these to weight what matters in your environment.
+let Weights = dynamic({
+    "RiskyType": 1,            // file can run code / carry code
+    "StagingFolder": 1,        // written to a user-writable staging folder
+    "Downloaded": 1,           // has a web origin URL (came from a browser/download)
+    "ScriptHostWriter": 2,     // risky file written by a script host, or any file by a downloader LOLBin
+    "OfficeDropsRisky": 3,     // Office app wrote a risky file type
+    "Masquerading": 3,         // double extension or right-to-left override trick
+    "Persistence": 3,          // written to a startup / scheduled task / launch folder
+    "RenamedToRisky": 2,       // renamed from a harmless extension to a risky one
+    "RemoteWrite": 2,          // risky file written over the network (SMB) by another host
+    "RareInOrg": 1             // same SHA256 seen on few devices in the org
+});
+let rareDeviceThreshold = 3;          // "rare" = seen on this many devices or fewer
+let prevalenceLookback  = 30d;        // how far back to count org prevalence (max 30d in Advanced Hunting)
+
+// ---- Inputs: exclusions ----
+let ExcludedInitiators = dynamic(["MsMpEng.exe", "TiWorker.exe", "TrustedInstaller.exe"]);  // Defender & Windows Update servicing
+let ExcludedFolders    = dynamic([@"\Windows\WinSxS\", @"\SoftwareDistribution\", @"\Windows Defender\"]);  // OS servicing / AV folders
+let ExcludedSHA256     = dynamic([]);  // known-good hashes confirmed during triage
+let excludedFileNameRegex = @"^__PSScriptPolicyTest_";  // PowerShell writes one of these to Temp on every launch
+
+// ---- Step 1: Pull the file events in scope ----
+// Time and action filters first (fastest), then the optional device / user scope,
+// then drop known-noisy servicing processes and folders.
+let FileActivity =
+    DeviceFileEvents
+    | where Timestamp between (startTime .. endTime)
+    | where ActionType in (ActionTypes)
+    | where isempty(targetDevice) or DeviceName =~ targetDevice or DeviceName startswith strcat(targetDevice, ".")
+    | where isempty(targetUser) or InitiatingProcessAccountName =~ targetUser or RequestAccountName =~ targetUser
+    | where InitiatingProcessFileName !in~ (ExcludedInitiators)
+    | where not(FolderPath has_any (ExcludedFolders))
+    | where SHA256 !in (ExcludedSHA256)
+    | where not(FileName matches regex excludedFileNameRegex);
+
+// ---- Step 2: Work out which red flags each event hits ----
+// Each Is* column is true/false. Writer checks also look at the original file name
+// from the binary's version info, so a renamed powershell.exe is still caught.
+// materialize() keeps the result in memory because Step 3 and the Output both use it.
+let Scored = materialize(
+    FileActivity
+    | extend FileExtension     = tolower(extract(@"(\.[^.\\/]+)$", 1, FileName))
+    | extend PreviousExtension = tolower(extract(@"(\.[^.\\/]+)$", 1, PreviousFileName))
+    | extend IsRiskyType        = FileExtension in (RiskyExtensions)
+    | extend IsStagingFolder    = FolderPath has_any (StagingFolders)
+    | extend IsDownloaded       = isnotempty(FileOriginUrl) or isnotempty(FileOriginReferrerUrl)
+    | extend IsScriptHostWriter = (IsRiskyType
+                                   and (InitiatingProcessFileName in~ (ScriptHosts)
+                                        or InitiatingProcessVersionInfoOriginalFileName in~ (ScriptHosts)))
+                                  or InitiatingProcessFileName in~ (DownloaderLolbins)
+                                  or InitiatingProcessVersionInfoOriginalFileName in~ (DownloaderLolbins)
+    | extend IsOfficeDropsRisky = IsRiskyType
+                                  and (InitiatingProcessFileName in~ (OfficeWriters)
+                                       or InitiatingProcessVersionInfoOriginalFileName in~ (OfficeWriters))
+                                  and FileExtension !in (".docm", ".xlsm", ".pptm", ".xlam")  // Office saving its own macro files is normal
+    // Double extension like "invoice.pdf.exe" (spaces before the real extension are a common trick),
+    // or the invisible right-to-left override character (U+202E) that makes "gpj.exe" display as "exe.jpg".
+    | extend IsMasquerading     = FileName matches regex @"(?i)\.(pdf|docx?|xlsx?|pptx?|txt|rtf|csv|jpe?g|png|gif|mp4|zip)\s*\.(exe|scr|com|pif|js|jse|vbs|vbe|wsf|hta|bat|cmd|ps1|lnk|msi|iso|img)$"
+                                  or FileName matches regex @"\x{202E}"
+    | extend IsPersistence      = FolderPath has_any (PersistenceFolders)
+    | extend IsRenamedToRisky   = ActionType == "FileRenamed" and IsRiskyType
+                                  and isnotempty(PreviousFileName) and PreviousExtension !in (RiskyExtensions)
+    // RequestSourceIP is filled when the write came over the network (e.g. SMB) from another machine.
+    | extend IsRemoteWrite      = IsRiskyType and isnotempty(RequestSourceIP)
+                                  and RequestSourceIP !in ("127.0.0.1", "::1")
+    // Add up the points for every flag that is true.
+    | extend PreScore = iff(IsRiskyType,        toint(Weights.RiskyType), 0)
+                      + iff(IsStagingFolder,    toint(Weights.StagingFolder), 0)
+                      + iff(IsDownloaded,       toint(Weights.Downloaded), 0)
+                      + iff(IsScriptHostWriter, toint(Weights.ScriptHostWriter), 0)
+                      + iff(IsOfficeDropsRisky, toint(Weights.OfficeDropsRisky), 0)
+                      + iff(IsMasquerading,     toint(Weights.Masquerading), 0)
+                      + iff(IsPersistence,      toint(Weights.Persistence), 0)
+                      + iff(IsRenamedToRisky,   toint(Weights.RenamedToRisky), 0)
+                      + iff(IsRemoteWrite,      toint(Weights.RemoteWrite), 0)
+    // Drop rows that cannot reach minScore even with the "rare" point, before the expensive step below.
+    | where PreScore >= minScore - toint(Weights.RareInOrg)
+);
+
+// ---- Step 3: Check how common each file is across the org ----
+// Count how many devices saw each candidate SHA256. Malware dropped in an attack
+// is usually on one or a few machines; legitimate software is on many.
+let CandidateHashes =
+    Scored
+    | where isnotempty(SHA256)
+    | distinct SHA256;
+let OrgPrevalence =
+    DeviceFileEvents
+    | where Timestamp > ago(prevalenceLookback)
+    | where SHA256 in (CandidateHashes)
+    | summarize OrgDeviceCount = dcount(DeviceId) by SHA256;
+
+// ---- Output ----
+// One row per file event, highest score first. Reasons lists every flag that fired.
+Scored
+| join kind=leftouter OrgPrevalence on SHA256
+| extend IsRareInOrg = isnotnull(OrgDeviceCount) and OrgDeviceCount <= rareDeviceThreshold
+| extend Score = PreScore + iff(IsRareInOrg, toint(Weights.RareInOrg), 0)
+| where Score >= minScore
+| extend Reasons = set_difference(pack_array(
+      iff(IsRiskyType,        "Risky file type", ""),
+      iff(IsStagingFolder,    "Staging folder", ""),
+      iff(IsDownloaded,       "Downloaded from web", ""),
+      iff(IsScriptHostWriter, "Written by script host/LOLBin", ""),
+      iff(IsOfficeDropsRisky, "Office app dropped risky file", ""),
+      iff(IsMasquerading,     "Double extension / RTLO", ""),
+      iff(IsPersistence,      "Persistence folder", ""),
+      iff(IsRenamedToRisky,   "Renamed to risky extension", ""),
+      iff(IsRemoteWrite,      "Written remotely over network", ""),
+      iff(IsRareInOrg,        strcat("Rare in org (", OrgDeviceCount, " devices)"), "")),
+      dynamic([""]))
+| project Timestamp, Score, Reasons, DeviceName, ActionType, FileName, FolderPath, PreviousFileName,
+          FileOriginUrl, FileOriginReferrerUrl, FileSize, SHA256, OrgDeviceCount,
+          InitiatingProcessAccountName, InitiatingProcessFileName, InitiatingProcessCommandLine,
+          InitiatingProcessParentFileName, RequestSourceIP, RequestAccountName, DeviceId, ReportId
+| sort by Score desc, Timestamp desc
