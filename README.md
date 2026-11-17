@@ -30,12 +30,12 @@ Built automatically from each query's header.
 
 | Query | MITRE ATT&CK | Data sources |
 |---|---|---|
-| [CVE-2025-56383 - Notepad++ DLL Hijacking](Threat%20Hunting/CVE-2025-56383%20-%20Notepad++%20DLL%20Hijacking.kql) | - | - |
-| [CVE-2026-111497 - NodeJS macOS Hunt](Threat%20Hunting/CVE-2026-111497%20-%20NodeJS%20macOS%20Hunt.kql) | - | - |
-| [CVE-2026-14191 - WinRAR RCE Detection](Threat%20Hunting/CVE-2026-14191%20-%20WinRAR%20RCE%20Detection.kql) | - | - |
-| [ClawdBot - Malware IOC Watchlist](Threat%20Hunting/ClawdBot%20-%20Malware%20IOC%20Watchlist.kql) | - | - |
+| [CVE-2025-56383 - Notepad++ DLL Hijacking](Threat%20Hunting/CVE-2025-56383%20-%20Notepad++%20DLL%20Hijacking.kql) | T1574.001 | DeviceImageLoadEvents, FileProfile() |
+| [CVE-2026-111497 - NodeJS macOS Hunt](Threat%20Hunting/CVE-2026-111497%20-%20NodeJS%20macOS%20Hunt.kql) | T1190, T1203 | DeviceProcessEvents, DeviceInfo |
+| [CVE-2026-14191 - WinRAR RCE Detection](Threat%20Hunting/CVE-2026-14191%20-%20WinRAR%20RCE%20Detection.kql) | T1203, T1204.002 | DeviceProcessEvents |
+| [ClawdBot - Malware IOC Watchlist](Threat%20Hunting/ClawdBot%20-%20Malware%20IOC%20Watchlist.kql) | T1105, T1176.002, T1219, T1574.001 | DeviceProcessEvents, DeviceFileEvents, DeviceImageLoadEvents, DeviceNetworkEvents |
 | [ClickFix - Multi-Stage Attack Chain Correlation](Threat%20Hunting/ClickFix%20-%20Multi-Stage%20Attack%20Chain%20Correlation.kql) | T1027, T1036.005, T1047, T1059.001, T1059.003, T1071.001, T1082, T1105, T1112, T1140, T1204.004, T1218.005, T1218.007, T1546.015, T1560.001, T1564.003, T1574.002, T1620 | - |
-| [LOLBAS - PowerShell AV Exclusion Commands](Threat%20Hunting/LOLBAS%20-%20PowerShell%20AV%20Exclusion%20Commands.kql) | - | - |
+| [LOLBAS - PowerShell AV Exclusion Commands](Threat%20Hunting/LOLBAS%20-%20PowerShell%20AV%20Exclusion%20Commands.kql) | T1059.001, T1562.001 | DeviceProcessEvents |
 
 ### Investigation
 
