@@ -40,8 +40,8 @@
     },
     {
       "techniqueID": "T1059.001",
-      "score": 2,
-      "comment": "ClickFix - Multi-Stage Attack Chain Correlation; LOLBAS - PowerShell AV Exclusion Commands",
+      "score": 1,
+      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
       "showSubtechniques": true
     },
     {
@@ -64,8 +64,8 @@
     },
     {
       "techniqueID": "T1105",
-      "score": 3,
-      "comment": "DeviceFileEvents - Suspicious File Activity Triage; ClawdBot - Malware IOC Watchlist; ClickFix - Multi-Stage Attack Chain Correlation",
+      "score": 2,
+      "comment": "DeviceFileEvents - Suspicious File Activity Triage; ClickFix - Multi-Stage Attack Chain Correlation",
       "showSubtechniques": true
     },
     {
@@ -81,27 +81,9 @@
       "showSubtechniques": true
     },
     {
-      "techniqueID": "T1176.002",
-      "score": 1,
-      "comment": "ClawdBot - Malware IOC Watchlist",
-      "showSubtechniques": true
-    },
-    {
-      "techniqueID": "T1190",
-      "score": 1,
-      "comment": "CVE-2026-111497 - NodeJS macOS Hunt",
-      "showSubtechniques": true
-    },
-    {
-      "techniqueID": "T1203",
-      "score": 2,
-      "comment": "CVE-2026-111497 - NodeJS macOS Hunt; CVE-2026-14191 - WinRAR RCE Detection",
-      "showSubtechniques": true
-    },
-    {
       "techniqueID": "T1204.002",
-      "score": 2,
-      "comment": "DeviceFileEvents - Suspicious File Activity Triage; CVE-2026-14191 - WinRAR RCE Detection",
+      "score": 1,
+      "comment": "DeviceFileEvents - Suspicious File Activity Triage",
       "showSubtechniques": true
     },
     {
@@ -123,12 +105,6 @@
       "showSubtechniques": true
     },
     {
-      "techniqueID": "T1219",
-      "score": 1,
-      "comment": "ClawdBot - Malware IOC Watchlist",
-      "showSubtechniques": true
-    },
-    {
       "techniqueID": "T1546.015",
       "score": 1,
       "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
@@ -147,12 +123,6 @@
       "showSubtechniques": true
     },
     {
-      "techniqueID": "T1562.001",
-      "score": 1,
-      "comment": "LOLBAS - PowerShell AV Exclusion Commands",
-      "showSubtechniques": true
-    },
-    {
       "techniqueID": "T1564.003",
       "score": 1,
       "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
@@ -168,12 +138,6 @@
       "techniqueID": "T1570",
       "score": 1,
       "comment": "DeviceFileEvents - Suspicious File Activity Triage",
-      "showSubtechniques": true
-    },
-    {
-      "techniqueID": "T1574.001",
-      "score": 2,
-      "comment": "CVE-2025-56383 - Notepad++ DLL Hijacking; ClawdBot - Malware IOC Watchlist",
       "showSubtechniques": true
     },
     {
