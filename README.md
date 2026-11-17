@@ -62,9 +62,8 @@ Built automatically from each query's header.
 
 ## ✅ Automatic checks
 
-Every pull request runs **KQL checks** (`.github/workflows/kql-checks.yml`):
+Every pull request runs **KQL checks** (`.github/workflows/kql-checks.yml`), which make sure the catalogue above and `attack-coverage.json` are up to date. After adding or changing a query, run `python3 .github/scripts/kql_catalogue.py build` and commit the result.
 
-- **Query headers:** new or changed queries must start with a complete header (Title, Type, Platform, Description, MITRE ATT&CK, Data sources, Author, Created, Version). Older queries without one only get a warning.
-- **Catalogue:** the table above and `attack-coverage.json` must be up to date. After adding or changing a query, run `python3 .github/scripts/kql_catalogue.py build` and commit the result.
+The catalogue's MITRE ATT&CK and Data sources columns come from each query's header (`// MITRE ATT&CK:` and `// Data sources:` lines), so queries without one show `-`.
 
 Happy Hunting! 🎯

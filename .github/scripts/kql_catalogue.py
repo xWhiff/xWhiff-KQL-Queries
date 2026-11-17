@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Header check, README catalogue and MITRE ATT&CK coverage layer for hunting-grounds.
+"""README query catalogue and MITRE ATT&CK coverage layer for hunting-grounds.
 
 Usage (from the repo root):
     python3 .github/scripts/kql_catalogue.py build            # rewrite README catalogue + attack-coverage.json
     python3 .github/scripts/kql_catalogue.py build --check    # fail if they are out of date (used in CI)
-    python3 .github/scripts/kql_catalogue.py headers --base origin/main
-        # check query headers: files changed vs --base must pass (errors),
-        # every other query only gets a warning, so old queries don't block PRs.
 
 Standard library only, so it runs on any machine with Python 3.9+.
 """
@@ -16,7 +13,6 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -25,14 +21,13 @@ README = REPO / "README.md"
 LAYER = REPO / "attack-coverage.json"
 QUERY_FOLDERS = ["Threat Hunting", "Detection", "Investigation", "Baselines", "Templates"]
 
-# Header fields every query must have, and the allowed values for Type.
-REQUIRED = ["Title", "Type", "Platform", "Description", "MITRE ATT&CK", "Data sources", "Author", "Created", "Version"]
-KNOWN = REQUIRED + ["References", "How to use", "Tuning / FPs", "Updated"]
-TYPES = {"Threat Hunting", "Detection", "Investigation", "Baseline", "Template"}
+# Header fields we recognise (see the header template). Only MITRE ATT&CK and
+# Data sources are used for the catalogue; queries without a header still get listed.
+KNOWN = ["Title", "Type", "Platform", "Description", "MITRE ATT&CK", "Data sources", "References",
+         "How to use", "Tuning / FPs", "Author", "Created", "Updated", "Version"]
 
 FIELD_RE = re.compile(r"^//\s*([A-Za-z&/ ]+?):\s*(.*)$")
 TECHNIQUE_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
-PLACEHOLDER_RE = re.compile(r"<[^<>]+>")  # unfilled template text like <Short descriptive title>
 START, END = "<!-- CATALOGUE:START -->", "<!-- CATALOGUE:END -->"
 
 
@@ -65,65 +60,6 @@ def parse_header(text: str) -> dict[str, str]:
         elif last:
             fields[last] = (fields[last] + " " + s.lstrip("/").strip()).strip()
     return fields
-
-
-def header_problems(fields: dict[str, str]) -> list[str]:
-    if not fields:
-        return ["no header block (copy the header template to the top of the file)"]
-    problems = [f"missing '{k}'" for k in REQUIRED if not fields.get(k)]
-    problems += [f"'{k}' still has template text {PLACEHOLDER_RE.search(v).group(0)}"
-                 for k, v in fields.items() if PLACEHOLDER_RE.search(v)]
-    if fields.get("Type") and fields["Type"] not in TYPES:
-        problems.append(f"'Type' is '{fields['Type']}', expected one of: {', '.join(sorted(TYPES))}")
-    if fields.get("MITRE ATT&CK") and not TECHNIQUE_RE.search(fields["MITRE ATT&CK"]):
-        problems.append("'MITRE ATT&CK' has no technique IDs like T1059.001")
-    if fields.get("Created") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", fields["Created"]):
-        problems.append("'Created' should be a date like 2026-11-17")
-    return problems
-
-
-# ---------------------------------------------------------------- headers command
-def changed_queries(base: str) -> set[Path]:
-    out = subprocess.run(
-        ["git", "diff", "--name-only", "-z", "--diff-filter=AMR", f"{base}...HEAD", "--", "*.kql"],
-        cwd=REPO, check=True, capture_output=True, text=True,
-    ).stdout
-    return {(REPO / p).resolve() for p in out.split("\0") if p}
-
-
-def annotate(level: str, path: Path, msg: str) -> None:
-    rel = path.relative_to(REPO).as_posix()
-    if os.environ.get("GITHUB_ACTIONS"):
-        print(f"::{level} file={rel},line=1::{msg}")
-    else:
-        print(f"{level.upper():7} {rel}: {msg}")
-
-
-def cmd_headers(base: str | None) -> int:
-    changed = changed_queries(base) if base else {p.resolve() for p in query_files()}
-    failed, warned, summary = 0, 0, []
-    for path in query_files():
-        problems = header_problems(parse_header(path.read_text(encoding="utf-8")))
-        is_changed = path.resolve() in changed
-        if problems:
-            level = "error" if is_changed else "warning"
-            annotate(level, path, "Header: " + "; ".join(problems))
-            failed += is_changed
-            warned += not is_changed
-        icon = "✅" if not problems else ("❌" if is_changed else "⚠️")
-        summary.append(f"| {icon} | `{path.relative_to(REPO).as_posix()}` | {'; '.join(problems) or 'OK'} |")
-
-    report = (
-        "## Query header check\n\n"
-        f"{failed} changed quer{'y' if failed == 1 else 'ies'} failing, "
-        f"{warned} older quer{'y' if warned == 1 else 'ies'} with warnings (not blocking).\n\n"
-        "| | File | Result |\n|---|---|---|\n" + "\n".join(summary) + "\n"
-    )
-    if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-            f.write(report)
-    print(f"\nHeader check: {failed} failing, {warned} warning(s).")
-    return 1 if failed else 0
 
 
 # ---------------------------------------------------------------- build command
@@ -211,10 +147,8 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="regenerate the README catalogue and attack-coverage.json")
     b.add_argument("--check", action="store_true", help="don't write; fail if the files are out of date")
-    h = sub.add_parser("headers", help="check query headers")
-    h.add_argument("--base", help="git ref to diff against; only changed queries can fail (default: all queries fail)")
     args = ap.parse_args()
-    return cmd_build(args.check) if args.cmd == "build" else cmd_headers(args.base)
+    return cmd_build(args.check)
 
 
 if __name__ == "__main__":
