@@ -1,0 +1,19 @@
+// =============================================================================
+// Title:          <Short descriptive title>
+// Type:           <Threat Hunting | Detection | Investigation | Baseline | Template>
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    <2-4 lines: what this looks for and why it matters.>
+//
+// MITRE ATT&CK:   <T1059.001 - PowerShell; T1105 - Ingress Tool Transfer>
+// Data sources:   <DeviceProcessEvents, DeviceNetworkEvents>
+// References:     <URL 1>
+//                 <URL 2>
+//
+// How to use:     <Which inputs to change, how long it takes, what to look at first.>
+// Tuning / FPs:   <Known legitimate activity that may match and how to exclude it.>
+//
+// Author:         xWhiff
+// Created:        <YYYY-MM-DD>
+// Updated:        <YYYY-MM-DD - what changed>
+// Version:        1.0
+// =============================================================================

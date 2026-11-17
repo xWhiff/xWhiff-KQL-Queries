@@ -1,0 +1,75 @@
+// =============================================================================
+// Title:          IOC Hunt - <campaign / source>
+// Type:           Threat Hunting
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Searches endpoint, network and email telemetry for the hashes,
+//                 domains and IPs listed in the Inputs section.
+//
+// MITRE ATT&CK:   <fill in from the source report>
+// Data sources:   DeviceProcessEvents, DeviceFileEvents, DeviceNetworkEvents,
+//                 EmailAttachmentInfo, EmailUrlInfo
+// References:     <source of the IOCs>
+//
+// How to use:     Paste IOCs into the lists below. Leave a list as dynamic([])
+//                 if you have none of that type.
+// Tuning / FPs:   Shared hosting / CDN IPs can match legitimate traffic; prefer
+//                 domains over IPs where both are available.
+//
+// Author:         xWhiff
+// Created:        <YYYY-MM-DD>
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let lookback = 30d;                     // Advanced Hunting keeps 30 days
+let HashIOCs   = dynamic([]);           // MD5, SHA1 or SHA256 - source: <report, date>
+let DomainIOCs = dynamic([]);           // e.g. "bad-domain.com" - source: <report, date>
+let IpIOCs     = dynamic([]);           // e.g. "203.0.113.10" - source: <report, date>
+
+// ---- Step 1: Processes run from a known-bad file ----
+// Matches any process whose image hash is in the hash list.
+let ProcessHits =
+    DeviceProcessEvents
+    | where Timestamp > ago(lookback)
+    | where SHA256 in (HashIOCs) or SHA1 in (HashIOCs) or MD5 in (HashIOCs)
+    | project Timestamp, Table = "DeviceProcessEvents", DeviceName, AccountName,
+              Indicator = coalesce(SHA256, SHA1), Detail = ProcessCommandLine;
+
+// ---- Step 2: Known-bad files written to disk ----
+// Catches the file landing even if it was never executed.
+let FileHits =
+    DeviceFileEvents
+    | where Timestamp > ago(lookback)
+    | where SHA256 in (HashIOCs) or SHA1 in (HashIOCs) or MD5 in (HashIOCs)
+    | project Timestamp, Table = "DeviceFileEvents", DeviceName,
+              AccountName = InitiatingProcessAccountName,
+              Indicator = coalesce(SHA256, SHA1), Detail = FolderPath;
+
+// ---- Step 3: Connections to bad IPs or domains ----
+// RemoteUrl holds the hostname when Defender could resolve it.
+let NetworkHits =
+    DeviceNetworkEvents
+    | where Timestamp > ago(lookback)
+    | where RemoteIP in (IpIOCs) or RemoteUrl has_any (DomainIOCs)
+    | project Timestamp, Table = "DeviceNetworkEvents", DeviceName,
+              AccountName = InitiatingProcessAccountName,
+              Indicator = iff(isnotempty(RemoteUrl), RemoteUrl, RemoteIP),
+              Detail = strcat(InitiatingProcessFileName, " -> ", RemoteIP, ":", RemotePort);
+
+// ---- Step 4: Emails carrying bad attachments or links ----
+let EmailHits = union isfuzzy=true
+    (EmailAttachmentInfo
+    | where Timestamp > ago(lookback)
+    | where SHA256 in (HashIOCs)
+    | project Timestamp, Table = "EmailAttachmentInfo", DeviceName = "",
+              AccountName = RecipientEmailAddress, Indicator = SHA256, Detail = FileName),
+    (EmailUrlInfo
+    | where Timestamp > ago(lookback)
+    | where UrlDomain has_any (DomainIOCs)
+    | project Timestamp, Table = "EmailUrlInfo", DeviceName = "",
+              AccountName = "", Indicator = UrlDomain, Detail = Url);
+
+// ---- Output ----
+// isfuzzy=true means a table you don't license won't break the whole query.
+union isfuzzy=true ProcessHits, FileHits, NetworkHits, EmailHits
+| sort by Timestamp desc
