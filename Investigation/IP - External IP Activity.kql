@@ -1,0 +1,78 @@
+// =============================================================================
+// Title:          IP - External IP Activity
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one external IP and shows everything linked to it:
+//                 devices that connected to it or accepted connections from it,
+//                 logons to devices from it, Entra ID sign-ins from it (which users,
+//                 success or failure, which apps) and emails sent from it.
+//
+// MITRE ATT&CK:   N/A - general IP triage for any alert
+// Data sources:   DeviceNetworkEvents, DeviceLogonEvents, EntraIdSignInEvents, EmailEvents
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-entraidsigninevents-table
+//
+// How to use:     Put the IP from the alert into ipAddress. Inbound connections and
+//                 device logons from an external IP, and successful sign-ins from it,
+//                 are the rows to look at first.
+// Tuning / FPs:   Shared IPs (VPNs, cloud providers, CDNs) return a lot of unrelated
+//                 activity: check the ISP before drawing conclusions. If your tenant
+//                 still uses the old table name, change EntraIdSignInEvents to
+//                 AADSignInEventsBeta. Email rows need Defender for Office 365.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let ipAddress = "203.0.113.10";       // REPLACE: external IP from the alert
+let lookback = 30d;                   // how far back to search
+// Defender often stores IPv4 addresses in IPv6 form (::ffff:203.0.113.10), so match both.
+let IpForms = pack_array(ipAddress, strcat("::ffff:", ipAddress));
+
+// ---- Step 1: Device connections to or from it ----
+// InboundConnectionAccepted = the IP connected in to the device; anything else = the device connected out.
+let Connections =
+    DeviceNetworkEvents
+    | where Timestamp > ago(lookback)
+    | where RemoteIP in (IpForms)
+    | extend Direction = iff(ActionType == "InboundConnectionAccepted", "Inbound", "Outbound")
+    | project Timestamp, Source = strcat("Device connection (", Direction, ")"), DeviceName,
+              Account = InitiatingProcessAccountName, What = InitiatingProcessFileName,
+              Detail = strcat(LocalIP, ":", LocalPort, " <-> ", RemoteIP, ":", RemotePort, " ", ActionType,
+                              iff(isnotempty(RemoteUrl), strcat(" (", RemoteUrl, ")"), ""));
+
+// ---- Step 2: Logons to devices from it ----
+let DeviceLogons =
+    DeviceLogonEvents
+    | where Timestamp > ago(lookback)
+    | where RemoteIP in (IpForms)
+    | project Timestamp, Source = "Device logon", DeviceName, Account = strcat(AccountDomain, @"\", AccountName),
+              What = LogonType, Detail = strcat(ActionType, iff(isnotempty(FailureReason), strcat(" | ", FailureReason), ""));
+
+// ---- Step 3: Entra ID sign-ins from it ----
+// ErrorCode 0 = success; anything else is a failure code.
+let SignIns =
+    EntraIdSignInEvents
+    | where Timestamp > ago(lookback)
+    | where IPAddress == ipAddress
+    | project Timestamp, Source = "Entra sign-in", DeviceName, Account = AccountUpn, What = Application,
+              Detail = strcat(iff(ErrorCode == 0, "Success", strcat("Failed (", ErrorCode, ")")),
+                              " | ", City, ", ", Country, " | ", ClientAppUsed,
+                              " | risk: ", RiskLevelDuringSignIn);
+
+// ---- Step 4: Emails sent from it ----
+let Emails =
+    EmailEvents
+    | where Timestamp > ago(lookback)
+    | where SenderIPv4 == ipAddress or SenderIPv6 == ipAddress
+    | project Timestamp, Source = "Email from IP", DeviceName = "", Account = RecipientEmailAddress,
+              What = Subject, Detail = strcat("From ", SenderFromAddress, " | ", DeliveryAction,
+                                              " | threats: ", ThreatTypes);
+
+// ---- Output ----
+// One timeline, oldest first.
+union isfuzzy=true Connections, DeviceLogons, SignIns, Emails
+| project Timestamp, Source, DeviceName, Account, What, Detail
+| sort by Timestamp asc

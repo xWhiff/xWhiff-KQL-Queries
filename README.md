@@ -44,8 +44,13 @@ Built automatically from each query's header and the `Docs/` folder.
 |---|---|---|---|
 | [Device - Activity Timeline Around Alert](Investigation/Device%20-%20Activity%20Timeline%20Around%20Alert.kql) | Defender XDR | - | DeviceInfo, DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents, DeviceRegistryEvents, DeviceLogonEvents, DeviceEvents |
 | [Device - Local IP to Network Activity](Investigation/Device%20-%20Local%20IP%20to%20Network%20Activity.kql) | Defender XDR | - | DeviceNetworkEvents, DeviceNetworkInfo, DeviceProcessEvents |
+| [Domain - Who Contacted It](Investigation/Domain%20-%20Who%20Contacted%20It.kql) | Defender XDR | - | DeviceNetworkEvents, DeviceEvents, EmailUrlInfo, EmailEvents, UrlClickEvents |
+| [Email - Phishing Message Trace](Investigation/Email%20-%20Phishing%20Message%20Trace.kql) | Defender XDR | T1566.001, T1566.002 | EmailEvents, EmailPostDeliveryEvents, EmailUrlInfo, EmailAttachmentInfo, UrlClickEvents, DeviceFileEvents |
 | [Entra ID - Sign-in Logs](Investigation/Entra%20ID%20-%20Sign-in%20Logs.kql) | Sentinel | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
 | [Entra ID - User Authentication Timeline](Investigation/Entra%20ID%20-%20User%20Authentication%20Timeline.kql) | Sentinel | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
+| [File - Hash Spread and Execution](Investigation/File%20-%20Hash%20Spread%20and%20Execution.kql) | Defender XDR | - | DeviceFileEvents, DeviceProcessEvents, DeviceImageLoadEvents, DeviceNetworkEvents, EmailAttachmentInfo, FileProfile() |
+| [IP - External IP Activity](Investigation/IP%20-%20External%20IP%20Activity.kql) | Defender XDR | - | DeviceNetworkEvents, DeviceLogonEvents, EntraIdSignInEvents, EmailEvents |
+| [User - Endpoint Logon Activity](Investigation/User%20-%20Endpoint%20Logon%20Activity.kql) | Defender XDR | T1021.001, T1078 | DeviceLogonEvents, IdentityLogonEvents |
 
 ### Baselines
 
