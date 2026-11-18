@@ -1,0 +1,130 @@
+// =============================================================================
+// Title:          Device - Activity Timeline Around Alert
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Everything one device did in the minutes either side of an alert,
+//                 in a single time-ordered list: processes started, network
+//                 connections, files written, registry changes, logons and key
+//                 security events (AV detections, new services, scheduled tasks...).
+//                 MinutesFromAlert shows how far each event is from the alert.
+//
+// MITRE ATT&CK:   N/A - general device triage for any alert
+// Data sources:   DeviceInfo, DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents,
+//                 DeviceRegistryEvents, DeviceLogonEvents, DeviceEvents
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-schema-tables
+//
+// How to use:     Fill in deviceName and alertTime (UTC) from the alert. Start with
+//                 the rows just before MinutesFromAlert = 0 to see what led up to it.
+//                 Too many rows? Shorten before / after, or remove sources from
+//                 ShowSources (Registry and Network are usually the busiest).
+// Tuning / FPs:   No results at all usually means deviceName didn't match: check the
+//                 spelling against the device page. Defender's own processes are
+//                 excluded via ExcludedProcesses; add other noisy agents there.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let deviceName = "pc01.contoso.com";             // REPLACE: device from the alert (short name also works)
+let alertTime  = datetime(2026-01-01 00:00:00);  // REPLACE: alert time (UTC)
+let before = 15m;                                // how far back from the alert
+let after  = 15m;                                // how far forward from the alert
+let ShowSources = dynamic(["Process", "Network", "File", "Registry", "Logon", "Event"]);  // remove any you don't need
+// Defender for Endpoint's own processes: they touch lots of files and registry keys and drown out the real activity.
+let ExcludedProcesses = dynamic(["MsMpEng.exe", "MsSense.exe", "SenseIR.exe", "SenseNdr.exe", "SenseCncProxy.exe"]);
+// DeviceEvents has hundreds of ActionTypes; these are the ones most useful in triage.
+let EventTypes = dynamic([
+    "AntivirusDetection", "ServiceInstalled", "ScheduledTaskCreated",
+    "ScheduledTaskUpdated", "PowerShellCommand", "UserAccountCreated", "UserAccountAddedToLocalGroup",
+    "ProcessCreatedUsingWmiQuery", "NamedPipeEvent", "DriverLoad", "ExploitGuardNetworkProtectionBlocked",
+    "SmartScreenUrlWarning", "SmartScreenAppWarning", "UsbDriveMounted"]);
+let startTime = alertTime - before;
+let endTime   = alertTime + after;
+
+// ---- Step 1: Find the device's ID ----
+// DeviceId is faster and more reliable than the name. Look back a week in case the
+// device last checked in a while before the alert; take the most recent match.
+let devId = toscalar(
+    DeviceInfo
+    | where Timestamp between ((alertTime - 7d) .. endTime)
+    | where DeviceName =~ deviceName or DeviceName startswith strcat(deviceName, ".")
+    | summarize arg_max(Timestamp, DeviceId)
+    | project DeviceId);
+
+// ---- Step 2: Processes started ----
+let Processes =
+    DeviceProcessEvents
+    | where Timestamp between (startTime .. endTime)
+    | where DeviceId == devId
+    | where InitiatingProcessFileName !in~ (ExcludedProcesses)
+    | project Timestamp, Source = "Process", ActionType, What = FileName, Detail = ProcessCommandLine,
+              Account = AccountName, InitiatingProcessFileName, InitiatingProcessCommandLine, SHA256, ReportId;
+
+// ---- Step 3: Network connections ----
+// What shows the hostname when Defender resolved it, otherwise the IP.
+let Network =
+    DeviceNetworkEvents
+    | where Timestamp between (startTime .. endTime)
+    | where DeviceId == devId
+    | where InitiatingProcessFileName !in~ (ExcludedProcesses)
+    | project Timestamp, Source = "Network", ActionType,
+              What = iff(isnotempty(RemoteUrl), RemoteUrl, RemoteIP),
+              Detail = strcat(RemoteIP, ":", RemotePort, " ", Protocol),
+              Account = InitiatingProcessAccountName, InitiatingProcessFileName, InitiatingProcessCommandLine,
+              SHA256 = InitiatingProcessSHA256, ReportId;
+
+// ---- Step 4: Files created, changed, renamed or deleted ----
+// Detail adds the download URL when the file came from the web.
+let Files =
+    DeviceFileEvents
+    | where Timestamp between (startTime .. endTime)
+    | where DeviceId == devId
+    | where InitiatingProcessFileName !in~ (ExcludedProcesses)
+    | project Timestamp, Source = "File", ActionType, What = FileName,
+              Detail = strcat(FolderPath, iff(isnotempty(FileOriginUrl), strcat("  (from ", FileOriginUrl, ")"), "")),
+              Account = InitiatingProcessAccountName, InitiatingProcessFileName, InitiatingProcessCommandLine,
+              SHA256, ReportId;
+
+// ---- Step 5: Registry changes ----
+let Registry =
+    DeviceRegistryEvents
+    | where Timestamp between (startTime .. endTime)
+    | where DeviceId == devId
+    | where InitiatingProcessFileName !in~ (ExcludedProcesses)
+    | project Timestamp, Source = "Registry", ActionType, What = RegistryValueName,
+              Detail = strcat(RegistryKey, iff(isnotempty(RegistryValueData), strcat(" = ", RegistryValueData), "")),
+              Account = InitiatingProcessAccountName, InitiatingProcessFileName, InitiatingProcessCommandLine,
+              SHA256 = InitiatingProcessSHA256, ReportId;
+
+// ---- Step 6: Logons (successful and failed) ----
+// Not filtered by ExcludedProcesses: logons are started by system processes like lsass.exe.
+let Logons =
+    DeviceLogonEvents
+    | where Timestamp between (startTime .. endTime)
+    | where DeviceId == devId
+    | project Timestamp, Source = "Logon", ActionType, What = strcat(AccountDomain, @"\", AccountName),
+              Detail = strcat(LogonType, iff(isnotempty(RemoteIP), strcat(" from ", RemoteIP), "")),
+              Account = AccountName, InitiatingProcessFileName, InitiatingProcessCommandLine,
+              SHA256 = InitiatingProcessSHA256, ReportId;
+
+// ---- Step 7: Key security events ----
+let Events =
+    DeviceEvents
+    | where Timestamp between (startTime .. endTime)
+    | where DeviceId == devId
+    | where ActionType in (EventTypes)
+    | project Timestamp, Source = "Event", ActionType, What = FileName, Detail = tostring(AdditionalFields),
+              Account = InitiatingProcessAccountName, InitiatingProcessFileName, InitiatingProcessCommandLine,
+              SHA256, ReportId;
+
+// ---- Output ----
+// One time-ordered list. MinutesFromAlert is negative before the alert and positive after it.
+union isfuzzy=true Processes, Network, Files, Registry, Logons, Events
+| where Source in (ShowSources)
+| extend MinutesFromAlert = round((Timestamp - alertTime) / 1m, 1)
+| project Timestamp, MinutesFromAlert, Source, ActionType, What, Detail, Account,
+          InitiatingProcessFileName, InitiatingProcessCommandLine, SHA256, ReportId
+| sort by Timestamp asc

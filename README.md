@@ -42,6 +42,7 @@ Built automatically from each query's header and the `Docs/` folder.
 
 | Query | Platform | MITRE ATT&CK | Data sources |
 |---|---|---|---|
+| [Device - Activity Timeline Around Alert](Investigation/Device%20-%20Activity%20Timeline%20Around%20Alert.kql) | Defender XDR | - | DeviceInfo, DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents, DeviceRegistryEvents, DeviceLogonEvents, DeviceEvents |
 | [Device - Local IP to Network Activity](Investigation/Device%20-%20Local%20IP%20to%20Network%20Activity.kql) | Defender XDR | - | DeviceNetworkEvents, DeviceNetworkInfo, DeviceProcessEvents |
 | [Entra ID - Sign-in Logs](Investigation/Entra%20ID%20-%20Sign-in%20Logs.kql) | Sentinel | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
 | [Entra ID - User Authentication Timeline](Investigation/Entra%20ID%20-%20User%20Authentication%20Timeline.kql) | Sentinel | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
