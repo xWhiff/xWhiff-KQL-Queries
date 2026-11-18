@@ -1,0 +1,67 @@
+// =============================================================================
+// Title:          Alert - Related Alerts by Entity
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one entity in an alert (a device, user, IP, file hash,
+//                 file name or domain) and lists every other alert that involved it,
+//                 from any Defender product, with the other devices, users, files and
+//                 IPs in each of those alerts. Shows whether this is a one-off or part
+//                 of something bigger.
+//
+// MITRE ATT&CK:   N/A - general alert triage
+// Data sources:   AlertEvidence, AlertInfo
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-alertevidence-table
+//
+// How to use:     Put one value into entity: a device name, user (UPN or
+//                 username), IP, SHA256 / SHA1, file name or domain. Read the oldest
+//                 alert first, and look at OtherDevices / OtherUsers to see spread.
+// Tuning / FPs:   Very common values (e.g. a file name like setup.exe, or a short
+//                 username) match many unrelated alerts: use the hash or full UPN.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let entity = "pc01.contoso.com";      // REPLACE: device, user, IP, hash, file name or domain from the alert
+let lookback = 30d;                   // how far back to search
+
+// ---- Step 1: Alerts where the entity appears as evidence ----
+// Checks every evidence column the value could be in.
+let Matches =
+    AlertEvidence
+    | where Timestamp > ago(lookback)
+    | where DeviceName =~ entity or AccountUpn =~ entity or AccountName =~ entity
+         or RemoteIP == entity or LocalIP == entity or SHA256 =~ entity or SHA1 =~ entity
+         or FileName =~ entity or RemoteUrl has entity
+    | summarize MatchedAs = make_set(strcat(EntityType, " (", EvidenceRole, ")"), 5) by AlertId;
+let AlertIds = Matches | project AlertId;
+
+// ---- Step 2: All the evidence in those alerts ----
+// Shows what else each alert involved, so you can see if it spread.
+let OtherEvidence =
+    AlertEvidence
+    | where Timestamp > ago(lookback)
+    | where AlertId in (AlertIds)
+    | summarize OtherDevices = make_set_if(DeviceName, isnotempty(DeviceName), 10),
+                OtherUsers = make_set_if(coalesce(AccountUpn, AccountName), isnotempty(coalesce(AccountUpn, AccountName)), 10),
+                OtherFiles = make_set_if(FileName, isnotempty(FileName), 10),
+                OtherIPs = make_set_if(RemoteIP, isnotempty(RemoteIP), 10),
+                OtherUrls = make_set_if(RemoteUrl, isnotempty(RemoteUrl), 10)
+        by AlertId;
+
+// ---- Step 3: Alert details ----
+// AlertInfo can have several rows per alert (updates); keep the latest.
+AlertInfo
+| where Timestamp > ago(lookback)
+| where AlertId in (AlertIds)
+| summarize arg_max(Timestamp, *) by AlertId
+| join kind=inner Matches on AlertId
+| join kind=leftouter OtherEvidence on AlertId
+// ---- Output ----
+// One row per alert, newest first.
+| project Timestamp, Title, Severity, Category, ServiceSource, DetectionSource, MatchedAs,
+          OtherDevices, OtherUsers, OtherFiles, OtherIPs, OtherUrls, AttackTechniques, AlertId
+| sort by Timestamp desc

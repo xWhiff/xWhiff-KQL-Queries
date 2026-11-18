@@ -1,0 +1,61 @@
+// =============================================================================
+// Title:          User - Cloud App Activity
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one user and shows what they did in Microsoft 365 and
+//                 other connected cloud apps, highlighting the actions that matter
+//                 after an account compromise: inbox rules, mail forwarding, mailbox
+//                 permissions, app consent, file downloads, sharing and admin changes,
+//                 with the IP, country and whether that location is unusual for them.
+//
+// MITRE ATT&CK:   T1114.003 - Email Collection: Email Forwarding Rule;
+//                 T1564.008 - Hide Artifacts: Email Hiding Rules;
+//                 T1530 - Data from Cloud Storage; T1098 - Account Manipulation
+// Data sources:   CloudAppEvents
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-cloudappevents-table
+//
+// How to use:     Set userUpn. With onlyHighlights = true you see just the risky
+//                 action types; set it to false to see everything. Check rows where
+//                 UncommonForUser is filled in (new IP, country or ISP for this user).
+// Tuning / FPs:   Needs Defender for Cloud Apps / Microsoft 365 connected. Bulk file
+//                 downloads by sync clients (OneDrive) are normal; look at the IP and
+//                 user agent. Mail-read events (MailItemsAccessed) are very noisy, so
+//                 they are left out of the highlights.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let userUpn = "user@contoso.com";     // REPLACE: the user's sign-in name (UPN)
+let lookback = 7d;                    // how far back to search
+let onlyHighlights = true;            // false = show every action, not just the risky ones
+
+// ---- Step 1: Everything the user did ----
+// CloudAppEvents has no plain UPN column, so the user is read from the raw event (UserId).
+let Activity =
+    CloudAppEvents
+    | where Timestamp > ago(lookback)
+    | where tostring(RawEventData.UserId) =~ userUpn
+// ---- Step 2: Label the actions that matter after a compromise ----
+    | extend Category = case(
+        ActionType in ("New-InboxRule", "Set-InboxRule", "UpdateInboxRules"), "Inbox rule",
+        ActionType == "Set-Mailbox" and tostring(RawEventData.Parameters) has_any ("ForwardingSmtpAddress", "ForwardingAddress", "DeliverToMailboxAndForward"), "Mail forwarding",
+        ActionType in ("Add-MailboxPermission", "Add-RecipientPermission", "Add-MailboxFolderPermission"), "Mailbox permission",
+        ActionType has_any ("Consent to application", "Add delegated permission grant", "Add app role assignment"), "App consent",
+        ActionType in ("FileDownloaded", "FileSyncDownloadedFull"), "File download",
+        ActionType in ("AnonymousLinkCreated", "SharingSet", "SharingInvitationCreated", "AddedToSecureLink", "CompanyLinkCreated"), "Sharing",
+        ActionType has_any ("Update user", "Reset user password", "Change user password", "Add member to role", "User registered security info"), "Account change",
+        IsAdminOperation == true, "Admin action",
+        "Other");
+
+// ---- Output ----
+// Newest first. Detail shows the action's parameters (e.g. inbox rule conditions or forwarding address).
+Activity
+| where not(onlyHighlights) or Category != "Other"
+| project Timestamp, Category, Application, ActionType, ObjectName, IPAddress, CountryCode, ISP,
+          IsAnonymousProxy, UncommonForUser, UserAgent,
+          Detail = tostring(RawEventData.Parameters), ReportId
+| sort by Timestamp desc
