@@ -1,0 +1,83 @@
+// =============================================================================
+// Title:          Device - Discovery Commands
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one device and lists reconnaissance commands run on it
+//                 (whoami, net user / group, nltest, ipconfig, systeminfo, AD and
+//                 PowerView cmdlets, AdFind, SharpHound...). Commands are grouped
+//                 into bursts per account: an attacker usually runs many different
+//                 recon tools within a few minutes, which normal users rarely do.
+//
+// MITRE ATT&CK:   T1087 - Account Discovery; T1069 - Permission Groups Discovery;
+//                 T1482 - Domain Trust Discovery; T1016 - System Network Configuration Discovery;
+//                 T1082 - System Information Discovery; T1057 - Process Discovery
+// Data sources:   DeviceInfo, DeviceProcessEvents
+// References:     https://attack.mitre.org/tactics/TA0007/
+//
+// How to use:     Set deviceName and lookback. Sort by BurstTools (highest first) to
+//                 find the bursts: 5+ different recon tools from one account within
+//                 burstWindow is a strong sign of hands-on-keyboard activity.
+// Tuning / FPs:   IT support and admin scripts run ipconfig, whoami, systeminfo and
+//                 net commands: look at the parent process and account. Add known
+//                 scripts' parents to ExcludedParents once checked.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let deviceName = "pc01.contoso.com";  // REPLACE: device to check (short name also works)
+let lookback = 7d;                    // how far back to search
+let burstWindow = 10m;                // commands from one account within this time count as one burst
+let ExcludedParents = dynamic([]);    // e.g. a monitoring agent that runs ipconfig every hour
+// Built-in and well-known recon tools, by file name.
+let ReconTools = dynamic([
+    "whoami.exe", "nltest.exe", "ipconfig.exe", "systeminfo.exe", "tasklist.exe", "quser.exe", "qwinsta.exe",
+    "query.exe", "arp.exe", "route.exe", "netstat.exe", "nslookup.exe", "hostname.exe", "dsquery.exe",
+    "adfind.exe", "setspn.exe", "klist.exe", "cmdkey.exe", "gpresult.exe", "sharphound.exe", "csvde.exe", "ldifde.exe"]);
+// net.exe subcommands that are recon (net use / net start are left out).
+let NetReconVerbs = dynamic(["user", "group", "localgroup", "view", "share", "accounts", "session"]);
+// PowerShell cmdlets used for AD and network recon (ActiveDirectory module and PowerView).
+let ReconCmdlets = dynamic([
+    "Get-ADUser", "Get-ADComputer", "Get-ADGroupMember", "Get-ADGroup", "Get-ADDomain", "Get-ADTrust",
+    "Get-NetUser", "Get-NetGroup", "Get-NetComputer", "Get-DomainUser", "Get-DomainGroup", "Get-DomainComputer",
+    "Invoke-ShareFinder", "Get-LocalGroupMember", "Invoke-BloodHound", "Get-NetSession"]);
+
+// ---- Step 1: Find the device's ID ----
+let devId = toscalar(
+    DeviceInfo
+    | where Timestamp > ago(lookback + 7d)
+    | where DeviceName =~ deviceName or DeviceName startswith strcat(deviceName, ".")
+    | summarize arg_max(Timestamp, DeviceId)
+    | project DeviceId);
+
+// ---- Step 2: Recon commands ----
+// Checks the original file name too, so renamed tools are still caught.
+let Recon = materialize(
+    DeviceProcessEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where InitiatingProcessFileName !in~ (ExcludedParents)
+    | where FileName in~ (ReconTools) or ProcessVersionInfoOriginalFileName in~ (ReconTools)
+         or (FileName in~ ("net.exe", "net1.exe") and ProcessCommandLine has_any (NetReconVerbs))
+         or (FileName =~ "wmic.exe" and ProcessCommandLine has_any ("useraccount", "group", "qfe", "computersystem", "share", "process get", "process list"))
+         or (FileName in~ ("powershell.exe", "pwsh.exe") and ProcessCommandLine has_any (ReconCmdlets))
+    | extend Tool = iff(FileName in~ ("powershell.exe", "pwsh.exe"), "PowerShell recon", tolower(FileName)),
+             Burst = bin(Timestamp, burstWindow)
+);
+
+// ---- Step 3: Size of each burst ----
+// How many different recon tools the same account ran in the same burst window.
+let Bursts =
+    Recon
+    | summarize BurstTools = dcount(Tool), BurstCommands = count() by AccountName, Burst;
+
+// ---- Output ----
+// Every recon command, with the size of the burst it belongs to. Oldest first.
+Recon
+| join kind=inner Bursts on AccountName, Burst
+| project Timestamp, AccountName, BurstTools, BurstCommands, Tool, ProcessCommandLine,
+          InitiatingProcessFileName, InitiatingProcessCommandLine
+| sort by Timestamp asc

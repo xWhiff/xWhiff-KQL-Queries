@@ -9,6 +9,30 @@
   "hideDisabled": false,
   "techniques": [
     {
+      "techniqueID": "T1003.001",
+      "score": 1,
+      "comment": "Device - Credential Access Check",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1003.002",
+      "score": 1,
+      "comment": "Device - Credential Access Check",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1003.003",
+      "score": 1,
+      "comment": "Device - Credential Access Check",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1016",
+      "score": 1,
+      "comment": "Device - Discovery Commands",
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1021.001",
       "score": 2,
       "comment": "Device - Lateral Movement From Device; User - Endpoint Logon Activity",
@@ -51,9 +75,27 @@
       "showSubtechniques": true
     },
     {
+      "techniqueID": "T1048",
+      "score": 1,
+      "comment": "Device - Data Exfiltration Check",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1052.001",
+      "score": 1,
+      "comment": "Device - Data Exfiltration Check",
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1053.005",
       "score": 2,
       "comment": "Device - Persistence Check; DeviceFileEvents - Suspicious File Activity Triage",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1057",
+      "score": 1,
+      "comment": "Device - Discovery Commands",
       "showSubtechniques": true
     },
     {
@@ -72,6 +114,18 @@
       "techniqueID": "T1059.004",
       "score": 1,
       "comment": "NodeJS - Child Shell Process Baseline",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1069",
+      "score": 1,
+      "comment": "Device - Discovery Commands",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1070.001",
+      "score": 1,
+      "comment": "Device - Defence Evasion Check",
       "showSubtechniques": true
     },
     {
@@ -94,8 +148,14 @@
     },
     {
       "techniqueID": "T1082",
+      "score": 2,
+      "comment": "Device - Discovery Commands; ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1087",
       "score": 1,
-      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "comment": "Device - Discovery Commands",
       "showSubtechniques": true
     },
     {
@@ -159,6 +219,18 @@
       "showSubtechniques": true
     },
     {
+      "techniqueID": "T1219",
+      "score": 1,
+      "comment": "Device - Remote Access Tools",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1482",
+      "score": 1,
+      "comment": "Device - Discovery Commands",
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1530",
       "score": 1,
       "comment": "User - Cloud App Activity",
@@ -201,15 +273,51 @@
       "showSubtechniques": true
     },
     {
+      "techniqueID": "T1555.003",
+      "score": 1,
+      "comment": "Device - Credential Access Check",
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1556.006",
       "score": 2,
       "comment": "Entra ID - Sign-in Logs; Entra ID - User Authentication Timeline",
       "showSubtechniques": true
     },
     {
-      "techniqueID": "T1560.001",
+      "techniqueID": "T1558.003",
       "score": 1,
-      "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "comment": "Device - Credential Access Check",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1560.001",
+      "score": 2,
+      "comment": "Device - Data Exfiltration Check; ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1562.001",
+      "score": 1,
+      "comment": "Device - Defence Evasion Check",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1562.002",
+      "score": 1,
+      "comment": "Device - Defence Evasion Check",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1562.004",
+      "score": 1,
+      "comment": "Device - Defence Evasion Check",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1562.009",
+      "score": 1,
+      "comment": "Device - Defence Evasion Check",
       "showSubtechniques": true
     },
     {
@@ -237,9 +345,21 @@
       "showSubtechniques": true
     },
     {
+      "techniqueID": "T1567.002",
+      "score": 1,
+      "comment": "Device - Data Exfiltration Check",
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1570",
       "score": 2,
       "comment": "Device - Lateral Movement From Device; DeviceFileEvents - Suspicious File Activity Triage",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1572",
+      "score": 1,
+      "comment": "Device - Remote Access Tools",
       "showSubtechniques": true
     },
     {

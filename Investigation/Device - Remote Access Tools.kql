@@ -1,0 +1,102 @@
+// =============================================================================
+// Title:          Device - Remote Access Tools
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one device and lists remote access / RMM tools on it
+//                 (AnyDesk, TeamViewer, ScreenConnect, Atera, Splashtop, RustDesk,
+//                 NetSupport, MeshAgent, ngrok, Cloudflare tunnels...): when each was
+//                 first and last run, by whom, from which folder, what launched it,
+//                 which of its servers it contacted, and whether it's new on the device.
+//                 Attackers install these to keep access that looks like IT support.
+//
+// MITRE ATT&CK:   T1219 - Remote Access Tools; T1572 - Protocol Tunneling
+// Data sources:   DeviceInfo, DeviceProcessEvents, DeviceNetworkEvents
+// References:     https://attack.mitre.org/techniques/T1219/
+//
+// How to use:     Set deviceName. Rows with IsNew = true (first seen within
+//                 newWithin) or RunsFromUserFolder = true are the ones to ask about:
+//                 did IT install this? Tools seen only in network traffic (no runs)
+//                 may be running from somewhere Defender didn't record.
+// Tuning / FPs:   Add the tool(s) your IT team actually uses to ApprovedTools, so only
+//                 unexpected ones show. Product and company names are checked too, so
+//                 renamed copies are still caught.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let deviceName = "pc01.contoso.com";  // REPLACE: device to check (short name also works)
+let lookback = 30d;                   // how far back to search
+let newWithin = 7d;                   // a tool first seen this recently is flagged as new
+let ApprovedTools = dynamic([]);      // e.g. "TeamViewer" if your IT team uses it (names as in the Tool column)
+// Works out which remote access tool some text (file name, folder, product name or URL) belongs to.
+// contains, not has, because the names are often joined to other words (AteraAgent.exe, ScreenConnect.ClientService.exe).
+let ToolName = (s:string) {
+    case(s contains "anydesk", "AnyDesk",
+         s contains "teamviewer", "TeamViewer",
+         s contains "screenconnect" or s contains "connectwisecontrol", "ScreenConnect",
+         s contains "atera", "Atera",
+         s contains "splashtop", "Splashtop",
+         s contains "rustdesk", "RustDesk",
+         s contains "netsupport" or s contains "client32.exe", "NetSupport",
+         s contains "meshagent" or s contains "meshcentral", "MeshAgent",
+         s contains "logmein", "LogMeIn",
+         s contains "supremo", "Supremo",
+         s contains "todesk.exe" or s contains "todesk.com" or s contains @"\todesk\", "ToDesk",  // not "autodesk"
+         s contains "radmin", "Radmin",
+         s contains "dwagent" or s contains "dwservice", "DWService",
+         s contains "remoting_host" or s contains "remotedesktop.google.com", "Chrome Remote Desktop",
+         s contains "simplehelp", "SimpleHelp",
+         s contains "tacticalrmm", "Tactical RMM",
+         s contains "ngrok", "ngrok",
+         s contains "cloudflared" or s contains "trycloudflare.com", "Cloudflare tunnel",
+         "")
+};
+
+// ---- Step 1: Find the device's ID ----
+let devId = toscalar(
+    DeviceInfo
+    | where Timestamp > ago(lookback + 7d)
+    | where DeviceName =~ deviceName or DeviceName startswith strcat(deviceName, ".")
+    | summarize arg_max(Timestamp, DeviceId)
+    | project DeviceId);
+
+// ---- Step 2: Remote access tools run on the device ----
+let Runs =
+    DeviceProcessEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | extend Tool = ToolName(tolower(strcat(FileName, " ", FolderPath, " ", ProcessVersionInfoProductName, " ",
+                                            ProcessVersionInfoCompanyName)))
+    | where isnotempty(Tool) and Tool !in~ (ApprovedTools)
+    | summarize FirstSeen = min(Timestamp), LastSeen = max(Timestamp), Runs = count(),
+                Accounts = make_set(AccountName, 5), Folders = make_set(FolderPath, 5),
+                LaunchedBy = make_set(InitiatingProcessFileName, 5)
+        by Tool;
+
+// ---- Step 3: Connections to remote access tool servers ----
+let Connections =
+    DeviceNetworkEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where isnotempty(RemoteUrl)
+    | extend Tool = ToolName(tolower(RemoteUrl))
+    | where isnotempty(Tool) and Tool !in~ (ApprovedTools)
+    | summarize ServersContacted = make_set(RemoteUrl, 10), ConnectingProcesses = make_set(InitiatingProcessFileName, 5),
+                FirstConnection = min(Timestamp), LastConnection = max(Timestamp)
+        by Tool;
+
+// ---- Output ----
+// One row per tool, new ones first. RunsFromUserFolder = run from Downloads, Temp, AppData or Public.
+Runs
+| join kind=fullouter Connections on Tool
+| extend Tool = coalesce(Tool, Tool1)
+| extend FirstSeen = iff(isnull(FirstSeen), FirstConnection, FirstSeen)
+| extend IsNew = FirstSeen > ago(newWithin),
+         RunsFromUserFolder = tostring(Folders) has_any ("Downloads", "AppData", @"\Temp\", @"Users\Public")
+| project Tool, IsNew, RunsFromUserFolder, FirstSeen, LastSeen, Runs, Accounts, Folders, LaunchedBy,
+          ServersContacted, ConnectingProcesses, LastConnection
+| sort by IsNew desc, LastSeen desc

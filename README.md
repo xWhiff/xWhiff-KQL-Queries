@@ -44,9 +44,14 @@ Built automatically from each query's header and the `Docs/` folder.
 |---|---|---|---|
 | [Alert - Related Alerts by Entity](Investigation/Alert%20-%20Related%20Alerts%20by%20Entity.kql) | Defender XDR | - | AlertEvidence, AlertInfo |
 | [Device - Activity Timeline Around Alert](Investigation/Device%20-%20Activity%20Timeline%20Around%20Alert.kql) | Defender XDR | - | DeviceInfo, DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents, DeviceRegistryEvents, DeviceLogonEvents, DeviceEvents |
+| [Device - Credential Access Check](Investigation/Device%20-%20Credential%20Access%20Check.kql) | Defender XDR | T1003.001, T1003.002, T1003.003, T1555.003, T1558.003 | DeviceInfo, DeviceProcessEvents, DeviceEvents, DeviceFileEvents |
+| [Device - Data Exfiltration Check](Investigation/Device%20-%20Data%20Exfiltration%20Check.kql) | Defender XDR | T1048, T1052.001, T1560.001, T1567.002 | DeviceInfo, DeviceProcessEvents, DeviceFileEvents, DeviceNetworkEvents, DeviceEvents |
+| [Device - Defence Evasion Check](Investigation/Device%20-%20Defence%20Evasion%20Check.kql) | Defender XDR | T1070.001, T1562.001, T1562.002, T1562.004, T1562.009 | DeviceInfo, DeviceProcessEvents, DeviceRegistryEvents, DeviceEvents |
+| [Device - Discovery Commands](Investigation/Device%20-%20Discovery%20Commands.kql) | Defender XDR | T1016, T1057, T1069, T1082, T1087, T1482 | DeviceInfo, DeviceProcessEvents |
 | [Device - Lateral Movement From Device](Investigation/Device%20-%20Lateral%20Movement%20From%20Device.kql) | Defender XDR | T1021.001, T1021.002, T1021.006, T1047, T1570 | DeviceInfo, DeviceNetworkInfo, DeviceNetworkEvents, DeviceLogonEvents, DeviceProcessEvents |
 | [Device - Local IP to Network Activity](Investigation/Device%20-%20Local%20IP%20to%20Network%20Activity.kql) | Defender XDR | - | DeviceNetworkEvents, DeviceNetworkInfo, DeviceProcessEvents |
 | [Device - Persistence Check](Investigation/Device%20-%20Persistence%20Check.kql) | Defender XDR | T1053.005, T1543.003, T1546.003, T1546.012, T1547.001, T1547.004 | DeviceInfo, DeviceRegistryEvents, DeviceEvents, DeviceFileEvents |
+| [Device - Remote Access Tools](Investigation/Device%20-%20Remote%20Access%20Tools.kql) | Defender XDR | T1219, T1572 | DeviceInfo, DeviceProcessEvents, DeviceNetworkEvents |
 | [Domain - Who Contacted It](Investigation/Domain%20-%20Who%20Contacted%20It.kql) | Defender XDR | - | DeviceNetworkEvents, DeviceEvents, EmailUrlInfo, EmailEvents, UrlClickEvents |
 | [Email - Phishing Message Trace](Investigation/Email%20-%20Phishing%20Message%20Trace.kql) | Defender XDR | T1566.001, T1566.002 | EmailEvents, EmailPostDeliveryEvents, EmailUrlInfo, EmailAttachmentInfo, UrlClickEvents, DeviceFileEvents |
 | [Entra ID - Sign-in Logs](Investigation/Entra%20ID%20-%20Sign-in%20Logs.kql) | Sentinel | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |

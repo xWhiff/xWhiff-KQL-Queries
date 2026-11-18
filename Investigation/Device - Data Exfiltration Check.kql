@@ -1,0 +1,128 @@
+// =============================================================================
+// Title:          Device - Data Exfiltration Check
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one device and lists signs of data being gathered and
+//                 sent out: archive tools run, large archives written, connections to
+//                 file-sharing and paste sites, upload tools (rclone, MEGAcmd, curl /
+//                 PowerShell file uploads), and files copied to a USB drive.
+//
+// MITRE ATT&CK:   T1560.001 - Archive Collected Data: Archive via Utility;
+//                 T1567.002 - Exfiltration to Cloud Storage; T1048 - Exfiltration Over Alternative Protocol;
+//                 T1052.001 - Exfiltration over USB
+// Data sources:   DeviceInfo, DeviceProcessEvents, DeviceFileEvents, DeviceNetworkEvents, DeviceEvents
+// References:     https://attack.mitre.org/tactics/TA0010/
+//
+// How to use:     Set deviceName and lookback. Look for a sequence: archive created,
+//                 then an upload tool or file-sharing connection soon after. USB
+//                 rows show files written to a USB drive after it was plugged in.
+// Tuning / FPs:   Defender doesn't record how much data was sent, so this can't spot
+//                 "large uploads" on its own. Users zip files and use Dropbox / Google
+//                 Drive legitimately: remove sanctioned services from SharingSites.
+//                 USB rows match drive letters a USB drive was mounted as; if that
+//                 letter is also a normal disk on this device, check the folder.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let deviceName = "pc01.contoso.com";  // REPLACE: device to check (short name also works)
+let lookback = 7d;                    // how far back to search
+let minArchiveMB = 50;                // archives at least this big are listed
+// File-sharing, transfer and paste sites often used to take data out. Remove any your organisation uses.
+let SharingSites = dynamic([
+    "mega.nz", "mega.io", "dropbox.com", "dropboxusercontent.com", "wetransfer.com", "transfer.sh", "file.io",
+    "gofile.io", "sendspace.com", "mediafire.com", "pastebin.com", "temp.sh", "catbox.moe", "anonfiles.com",
+    "filebin.net", "drive.google.com", "storage.googleapis.com"]);
+let UploadTools = dynamic(["rclone.exe", "megacmd.exe", "MEGAcmdShell.exe", "mega-put.exe", "winscp.exe", "pscp.exe", "filezilla.exe"]);
+
+// ---- Step 1: Find the device's ID ----
+let devId = toscalar(
+    DeviceInfo
+    | where Timestamp > ago(lookback + 7d)
+    | where DeviceName =~ deviceName or DeviceName startswith strcat(deviceName, ".")
+    | summarize arg_max(Timestamp, DeviceId)
+    | project DeviceId);
+
+// ---- Step 2: Archive and upload commands ----
+// Each command line is labelled with what it does; anything unlabelled is dropped.
+let Commands =
+    DeviceProcessEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | extend Activity = case(
+        FileName in~ (UploadTools) or ProcessVersionInfoOriginalFileName in~ (UploadTools),
+            "Upload tool",
+        // curl options are case-sensitive: -T uploads a file, -F posts a form, -d @file posts a file's contents.
+        FileName =~ "curl.exe" and ProcessCommandLine matches regex @"(\s-T\s|--upload-file|\s-F\s|--form|\s-d\s*@|--data-binary\s*@|--data\s*@)",
+            "curl upload",
+        FileName in~ ("powershell.exe", "pwsh.exe") and ProcessCommandLine has_any ("-InFile", "UploadFile", "UploadData"),
+            "PowerShell upload",
+        FileName in~ ("7z.exe", "7za.exe", "rar.exe", "winrar.exe") and ProcessCommandLine matches regex @"\s(a|u)\s",  // a = add, u = update
+            "Archive created (command)",
+        FileName in~ ("powershell.exe", "pwsh.exe") and ProcessCommandLine has "Compress-Archive",
+            "Archive created (command)",
+        FileName =~ "tar.exe" and ProcessCommandLine matches regex @"\s-[a-zA-Z]*c",                            // -c / -cf / -czf = create
+            "Archive created (command)",
+        "")
+    | where isnotempty(Activity)
+    | project Timestamp, Activity, What = FileName, Detail = ProcessCommandLine, Account = AccountName,
+              ByProcess = InitiatingProcessFileName;
+
+// ---- Step 3: Large archives written to disk ----
+let BigArchives =
+    DeviceFileEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where ActionType in ("FileCreated", "FileModified", "FileRenamed")
+    | where FileName endswith ".zip" or FileName endswith ".7z" or FileName endswith ".rar" or FileName endswith ".tar"
+         or FileName endswith ".gz"
+    | where FileSize >= minArchiveMB * 1024 * 1024
+    | project Timestamp, Activity = "Large archive written", What = FileName,
+              Detail = strcat(FolderPath, " (", round(FileSize / 1048576.0, 1), " MB)"),
+              Account = InitiatingProcessAccountName, ByProcess = InitiatingProcessFileName;
+
+// ---- Step 4: Connections to file-sharing and paste sites ----
+// Summarised per site and process, so a busy upload is one row, not thousands.
+let SharingConnections =
+    DeviceNetworkEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where RemoteUrl has_any (SharingSites)
+    | summarize Timestamp = min(Timestamp), LastSeen = max(Timestamp), Connections = count(),
+                Account = take_any(InitiatingProcessAccountName)
+        by Site = RemoteUrl, ByProcess = InitiatingProcessFileName
+    | project Timestamp, Activity = "File-sharing site contacted", What = Site,
+              Detail = strcat(Connections, " connections until ", format_datetime(LastSeen, "yyyy-MM-dd HH:mm")),
+              Account, ByProcess;
+
+// ---- Step 5: Files copied to a USB drive ----
+// Find the drive letters USB drives were mounted as, then files written to those letters.
+let UsbLetters =
+    DeviceEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where ActionType == "UsbDriveMounted"
+    | extend DriveLetter = toupper(substring(tostring(parse_json(AdditionalFields).DriveLetter), 0, 1))  // "E" or "E:" -> "E"
+    | where isnotempty(DriveLetter)
+    | distinct DriveLetter;
+let UsbCopies =
+    DeviceFileEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where ActionType in ("FileCreated", "FileModified")
+    | where substring(FolderPath, 1, 2) == @":\" and toupper(substring(FolderPath, 0, 1)) in (UsbLetters)
+    | summarize Timestamp = min(Timestamp), Files = count(), Examples = make_set(FileName, 5),
+                Account = take_any(InitiatingProcessAccountName)
+        by Drive = strcat(toupper(substring(FolderPath, 0, 1)), ":"), ByProcess = InitiatingProcessFileName
+    | project Timestamp, Activity = "Files copied to USB", What = Drive,
+              Detail = strcat(Files, " files, e.g. ", strcat_array(Examples, ", ")), Account, ByProcess;
+
+// ---- Output ----
+// One list, oldest first.
+union isfuzzy=true Commands, BigArchives, SharingConnections, UsbCopies
+| project Timestamp, Activity, What, Detail, Account, ByProcess
+| sort by Timestamp asc
