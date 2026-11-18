@@ -1,0 +1,83 @@
+// =============================================================================
+// Title:          Domain - Who Contacted It
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one domain and shows everything that touched it: devices
+//                 and processes that connected to it or looked it up in DNS, emails
+//                 that contained a link to it, and users who clicked one of those
+//                 links. Subdomains match too.
+//
+// MITRE ATT&CK:   N/A - general domain triage for any alert
+// Data sources:   DeviceNetworkEvents, DeviceEvents, EmailUrlInfo, EmailEvents, UrlClickEvents
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicenetworkevents-table
+//
+// How to use:     Put the domain from the alert into domain (no http:// or path).
+//                 Look at which process made each connection (What), and whether the
+//                 domain first arrived by email.
+// Tuning / FPs:   Popular shared domains (CDNs, cloud storage) return a lot: use the
+//                 full hostname, not just the parent domain. DNS rows only appear on
+//                 devices where Defender records DNS lookups. Email rows need
+//                 Defender for Office 365.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let domain = "malicious.contoso.com";  // REPLACE: domain from the alert (subdomains also match)
+let lookback = 30d;                     // how far back to search
+
+// ---- Step 1: Devices that connected to it ----
+// has matches the domain as whole words, so sub.malicious.contoso.com matches too.
+let Connections =
+    DeviceNetworkEvents
+    | where Timestamp > ago(lookback)
+    | where RemoteUrl has domain
+    | project Timestamp, Source = "Network connection", DeviceName, Account = InitiatingProcessAccountName,
+              What = InitiatingProcessFileName,
+              Detail = strcat(RemoteUrl, " -> ", RemoteIP, ":", RemotePort, " ", ActionType),
+              CommandLine = InitiatingProcessCommandLine;
+
+// ---- Step 2: Devices that looked it up in DNS ----
+// Catches lookups even where the connection itself was blocked or not recorded.
+let DnsLookups =
+    DeviceEvents
+    | where Timestamp > ago(lookback)
+    | where ActionType == "DnsQueryResponse"
+    | where tostring(AdditionalFields) has domain
+    | project Timestamp, Source = "DNS lookup", DeviceName, Account = InitiatingProcessAccountName,
+              What = InitiatingProcessFileName, Detail = tostring(AdditionalFields),
+              CommandLine = InitiatingProcessCommandLine;
+
+// ---- Step 3: Emails with a link to it ----
+let EmailIds =
+    EmailUrlInfo
+    | where Timestamp > ago(lookback)
+    | where UrlDomain has domain or Url has domain
+    | summarize Urls = make_set(Url, 5) by NetworkMessageId;
+let EmailLinks =
+    EmailEvents
+    | where Timestamp > ago(lookback)
+    | where NetworkMessageId in ((EmailIds | project NetworkMessageId))
+    | join kind=inner EmailIds on NetworkMessageId
+    | project Timestamp, Source = "Email with link", DeviceName = "", Account = RecipientEmailAddress,
+              What = Subject,
+              Detail = strcat("From ", SenderFromAddress, " | ", DeliveryAction, " | ", strcat_array(Urls, " ")),
+              CommandLine = "";
+
+// ---- Step 4: Users who clicked a link to it ----
+let Clicks =
+    UrlClickEvents
+    | where Timestamp > ago(lookback)
+    | where Url has domain
+    | project Timestamp, Source = "URL click", DeviceName = "", Account = AccountUpn, What = ActionType,
+              Detail = strcat(Url, iff(IsClickedThrough, "  (clicked through a warning)", "")),
+              CommandLine = "";
+
+// ---- Output ----
+// One timeline, oldest first, so the first contact with the domain is at the top.
+union isfuzzy=true Connections, DnsLookups, EmailLinks, Clicks
+| project Timestamp, Source, DeviceName, Account, What, Detail, CommandLine
+| sort by Timestamp asc

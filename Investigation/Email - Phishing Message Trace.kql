@@ -1,0 +1,115 @@
+// =============================================================================
+// Title:          Email - Phishing Message Trace
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from a suspicious email (sender, subject or message ID) and
+//                 traces it: who received it and where it was delivered, what
+//                 happened to it afterwards (ZAP, user reports, admin removal), which
+//                 links and attachments it had, who clicked a link, and which files
+//                 landed on a clicker's device shortly after the click.
+//
+// MITRE ATT&CK:   T1566.001 - Phishing: Spearphishing Attachment;
+//                 T1566.002 - Phishing: Spearphishing Link
+// Data sources:   EmailEvents, EmailPostDeliveryEvents, EmailUrlInfo, EmailAttachmentInfo,
+//                 UrlClickEvents, DeviceFileEvents
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-emailevents-table
+//                 https://attack.mitre.org/techniques/T1566/
+//
+// How to use:     Fill in at least one of senderAddress, subjectWords or messageId
+//                 (leave the others ""). Look for "URL click" and "Download after
+//                 click" rows first: those users need checking.
+// Tuning / FPs:   Needs Defender for Office 365. Download after click matches any
+//                 web download by the same user within clickToFileWindow, so not
+//                 every one came from the phishing link: compare the URLs.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let senderAddress = "sender@contoso.com";  // REPLACE: sender address, or "" if not using it
+let subjectWords  = "";                    // words from the subject, e.g. "invoice overdue", or ""
+let messageId     = "";                    // NetworkMessageId from the alert, or ""
+let lookback = 7d;                         // how far back to search
+let clickToFileWindow = 30m;               // how long after a click to look for downloads
+
+// ---- Step 1: Find the email(s) and who received them ----
+// Matches any of the inputs that are filled in. has matches whole words in the subject.
+// materialize() keeps the result in memory because every later step uses it.
+let Messages = materialize(
+    EmailEvents
+    | where Timestamp > ago(lookback)
+    | where (isnotempty(senderAddress) and (SenderFromAddress =~ senderAddress or SenderMailFromAddress =~ senderAddress))
+         or (isnotempty(subjectWords) and Subject has subjectWords)
+         or (isnotempty(messageId) and NetworkMessageId == messageId)
+);
+let MessageIds = Messages | distinct NetworkMessageId;
+let Delivered =
+    Messages
+    | project Timestamp, Source = "Delivered", Recipient = RecipientEmailAddress, DeviceName = "",
+              What = Subject,
+              Detail = strcat("From ", SenderFromAddress, " | ", DeliveryAction, " to ", DeliveryLocation,
+                              " | latest: ", LatestDeliveryAction, " ", LatestDeliveryLocation,
+                              " | threats: ", ThreatTypes),
+              NetworkMessageId;
+
+// ---- Step 2: What happened to it after delivery ----
+// ZAP (automatic removal), admin removal, or the user reporting it.
+let PostDelivery =
+    EmailPostDeliveryEvents
+    | where Timestamp > ago(lookback)
+    | where NetworkMessageId in (MessageIds)
+    | project Timestamp, Source = "After delivery", Recipient = RecipientEmailAddress, DeviceName = "",
+              What = ActionType, Detail = strcat(Action, " | ", ActionResult, " | trigger: ", ActionTrigger),
+              NetworkMessageId;
+
+// ---- Step 3: Links and attachments in it ----
+let Links =
+    EmailUrlInfo
+    | where Timestamp > ago(lookback)
+    | where NetworkMessageId in (MessageIds)
+    | project Timestamp, Source = "Link in email", Recipient = "", DeviceName = "",
+              What = UrlDomain, Detail = Url, NetworkMessageId;
+let Attachments =
+    EmailAttachmentInfo
+    | where Timestamp > ago(lookback)
+    | where NetworkMessageId in (MessageIds)
+    | project Timestamp, Source = "Attachment", Recipient = RecipientEmailAddress, DeviceName = "",
+              What = FileName, Detail = strcat("SHA256: ", SHA256, " | threats: ", ThreatTypes),
+              NetworkMessageId;
+
+// ---- Step 4: Who clicked a link ----
+// IsClickedThrough = the user clicked past a Safe Links warning.
+let Clicks = materialize(
+    UrlClickEvents
+    | where Timestamp > ago(lookback)
+    | where NetworkMessageId in (MessageIds)
+);
+let ClickRows =
+    Clicks
+    | project Timestamp, Source = "URL click", Recipient = AccountUpn, DeviceName = "",
+              What = ActionType,
+              Detail = strcat(Url, iff(IsClickedThrough, "  (clicked through a warning)", "")),
+              NetworkMessageId;
+
+// ---- Step 5: Files downloaded on a clicker's device soon after the click ----
+// Web downloads (FileOriginUrl filled in) by the same user within clickToFileWindow.
+let ClickUsers = Clicks | distinct AccountUpn;
+let DownloadsAfterClick =
+    DeviceFileEvents
+    | where Timestamp > ago(lookback)
+    | where ActionType == "FileCreated" and isnotempty(FileOriginUrl)
+    | where InitiatingProcessAccountUpn in~ (ClickUsers)
+    | extend Upn = tolower(InitiatingProcessAccountUpn)
+    | join kind=inner (Clicks | project ClickTime = Timestamp, Upn = tolower(AccountUpn), NetworkMessageId) on Upn
+    | where Timestamp between (ClickTime .. (ClickTime + clickToFileWindow))
+    | project Timestamp, Source = "Download after click", Recipient = InitiatingProcessAccountUpn, DeviceName,
+              What = FileName, Detail = strcat(FolderPath, "  (from ", FileOriginUrl, ")"), NetworkMessageId;
+
+// ---- Output ----
+// One timeline, oldest first: delivery, then clicks, then what landed on devices.
+union isfuzzy=true Delivered, PostDelivery, Links, Attachments, ClickRows, DownloadsAfterClick
+| project Timestamp, Source, Recipient, DeviceName, What, Detail, NetworkMessageId
+| sort by Timestamp asc

@@ -9,6 +9,12 @@
   "hideDisabled": false,
   "techniques": [
     {
+      "techniqueID": "T1021.001",
+      "score": 1,
+      "comment": "User - Endpoint Logon Activity",
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1027",
       "score": 1,
       "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
@@ -60,6 +66,12 @@
       "techniqueID": "T1071.001",
       "score": 1,
       "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1078",
+      "score": 1,
+      "comment": "User - Endpoint Logon Activity",
       "showSubtechniques": true
     },
     {
@@ -154,8 +166,14 @@
     },
     {
       "techniqueID": "T1566.001",
+      "score": 2,
+      "comment": "Email - Phishing Message Trace; DeviceFileEvents - Suspicious File Activity Triage",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1566.002",
       "score": 1,
-      "comment": "DeviceFileEvents - Suspicious File Activity Triage",
+      "comment": "Email - Phishing Message Trace",
       "showSubtechniques": true
     },
     {

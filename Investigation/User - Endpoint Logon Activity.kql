@@ -1,0 +1,73 @@
+// =============================================================================
+// Title:          User - Endpoint Logon Activity
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one account name and shows every device it logged on
+//                 to: how (interactive, RDP, network...), from which IPs and devices,
+//                 how many logons failed, whether it had local admin, and whether the
+//                 device is new for this account. Covers endpoints (Defender for
+//                 Endpoint) and domain controller logons (Defender for Identity).
+//
+// MITRE ATT&CK:   T1078 - Valid Accounts; T1021.001 - Remote Services: Remote Desktop Protocol
+// Data sources:   DeviceLogonEvents, IdentityLogonEvents
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicelogonevents-table
+//
+// How to use:     Set accountName (the username without the domain). Look first at
+//                 rows with IsNewDevice = true, RemoteInteractive (RDP) logons, and
+//                 high Failures. FromIPs shows where the logons came from.
+// Tuning / FPs:   Local accounts with the same name on different devices (e.g.
+//                 "admin") are mixed together: check AccountDomain. Service accounts
+//                 log on to many devices; shorten lookback for those.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let accountName = "jsmith";           // REPLACE: username without the domain
+let lookback = 7d;                    // the period you're investigating
+let baseline = 30d;                   // longer period used to decide if a device is new for this user
+
+// ---- Step 1: Logons on endpoints ----
+// The account logged on to DeviceName; FromIP / FromDevice are where it came from (remote logons).
+let EndpointLogons =
+    DeviceLogonEvents
+    | where Timestamp > ago(baseline)
+    | where AccountName =~ accountName
+    | project Timestamp, Source = "Endpoint", Device = DeviceName, AccountDomain, ActionType, LogonType,
+              FromIP = RemoteIP, FromDevice = RemoteDeviceName, IsLocalAdmin, FailureReason;
+
+// ---- Step 2: Logons seen by domain controllers ----
+// Needs Defender for Identity; skipped if you don't have it.
+let DomainLogons =
+    IdentityLogonEvents
+    | where Timestamp > ago(baseline)
+    | where AccountName =~ accountName
+    | project Timestamp, Source = strcat("Domain (", Application, ")"),
+              Device = coalesce(DestinationDeviceName, TargetDeviceName), AccountDomain, ActionType, LogonType,
+              FromIP = IPAddress, FromDevice = DeviceName, IsLocalAdmin = bool(null), FailureReason;
+let AllLogons = materialize(union isfuzzy=true EndpointLogons, DomainLogons);
+
+// ---- Step 3: Is the device new for this account? ----
+// New = the account's first logon to it in the baseline period falls inside lookback.
+let FirstSeenPerDevice =
+    AllLogons
+    | summarize FirstEverLogon = min(Timestamp) by Device;
+
+// ---- Output ----
+// One row per device and logon source, most recent first.
+AllLogons
+| where Timestamp > ago(lookback)
+| summarize Logons = count(), Failures = countif(ActionType == "LogonFailed"),
+            FirstSeen = min(Timestamp), LastSeen = max(Timestamp),
+            LogonTypes = make_set(LogonType, 10), FromIPs = make_set(FromIP, 10),
+            FromDevices = make_set(FromDevice, 10), AnyLocalAdmin = countif(IsLocalAdmin) > 0,
+            FailureReasons = make_set(FailureReason, 5), Domains = make_set(AccountDomain, 5)
+    by Source, Device
+| join kind=leftouter FirstSeenPerDevice on Device
+| extend IsNewDevice = FirstEverLogon > ago(lookback)
+| project LastSeen, Device, Source, IsNewDevice, Logons, Failures, LogonTypes, FromIPs, FromDevices,
+          AnyLocalAdmin, FailureReasons, Domains, FirstSeen
+| sort by LastSeen desc

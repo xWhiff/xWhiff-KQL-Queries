@@ -1,0 +1,104 @@
+// =============================================================================
+// Title:          File - Hash Spread and Execution
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one SHA256 and shows everything about it in one
+//                 timeline: which devices it landed on and how (download URL,
+//                 email attachment, process that wrote it), who ran it and what
+//                 launched it, what it started and connected to afterwards, and
+//                 how common it is worldwide.
+//
+// MITRE ATT&CK:   N/A - general file triage for any alert
+// Data sources:   DeviceFileEvents, DeviceProcessEvents, DeviceImageLoadEvents,
+//                 DeviceNetworkEvents, EmailAttachmentInfo, FileProfile()
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-schema-tables
+//
+// How to use:     Paste the SHA256 from the alert into fileHash. Read the "File
+//                 profile" row first (global prevalence, signer), then the earliest
+//                 rows to see where it came from. Via shows the process involved.
+// Tuning / FPs:   A common legitimate file (e.g. a browser installer) returns many
+//                 rows: shorten lookback. Email rows need Defender for Office 365;
+//                 they are skipped if you don't have it.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let fileHash = "0000000000000000000000000000000000000000000000000000000000000000";  // REPLACE: SHA256 from the alert
+let lookback = 30d;                   // how far back to search (Advanced Hunting keeps 30 days)
+
+// ---- Step 1: How common the file is worldwide ----
+// FileProfile() adds Microsoft's global view: how many devices have it, signer, threat name.
+let Profile =
+    print SHA256 = fileHash
+    | invoke FileProfile("SHA256", 1)
+    | project Timestamp = GlobalFirstSeen, Source = "File profile", DeviceName = "", Account = "",
+              What = coalesce(ThreatName, "No threat name"),
+              Detail = strcat("Global prevalence: ", GlobalPrevalence, " | signer: ", Signer,
+                              " | valid cert: ", IsCertificateValid),
+              Via = "", ViaCommandLine = "";
+
+// ---- Step 2: Where the file was written to disk ----
+// Detail adds the download URL when it came from the web.
+let Written =
+    DeviceFileEvents
+    | where Timestamp > ago(lookback)
+    | where SHA256 =~ fileHash
+    | project Timestamp, Source = strcat("File ", ActionType), DeviceName, Account = InitiatingProcessAccountName,
+              What = FileName,
+              Detail = strcat(FolderPath, iff(isnotempty(FileOriginUrl), strcat("  (from ", FileOriginUrl, ")"), "")),
+              Via = InitiatingProcessFileName, ViaCommandLine = InitiatingProcessCommandLine;
+
+// ---- Step 3: Where it was run ----
+let Executed =
+    DeviceProcessEvents
+    | where Timestamp > ago(lookback)
+    | where SHA256 =~ fileHash
+    | project Timestamp, Source = "Executed", DeviceName, Account = AccountName, What = FileName,
+              Detail = ProcessCommandLine, Via = InitiatingProcessFileName,
+              ViaCommandLine = InitiatingProcessCommandLine;
+
+// ---- Step 4: Where it was loaded as a DLL ----
+let LoadedAsDll =
+    DeviceImageLoadEvents
+    | where Timestamp > ago(lookback)
+    | where SHA256 =~ fileHash
+    | project Timestamp, Source = "Loaded as DLL", DeviceName, Account = InitiatingProcessAccountName,
+              What = FileName, Detail = FolderPath, Via = InitiatingProcessFileName,
+              ViaCommandLine = InitiatingProcessCommandLine;
+
+// ---- Step 5: What it did next: processes it started ----
+let ChildProcesses =
+    DeviceProcessEvents
+    | where Timestamp > ago(lookback)
+    | where InitiatingProcessSHA256 =~ fileHash
+    | project Timestamp, Source = "Started a process", DeviceName, Account = AccountName, What = FileName,
+              Detail = ProcessCommandLine, Via = InitiatingProcessFileName,
+              ViaCommandLine = InitiatingProcessCommandLine;
+
+// ---- Step 6: What it did next: network connections it made ----
+let Connections =
+    DeviceNetworkEvents
+    | where Timestamp > ago(lookback)
+    | where InitiatingProcessSHA256 =~ fileHash
+    | project Timestamp, Source = "Network connection", DeviceName, Account = InitiatingProcessAccountName,
+              What = iff(isnotempty(RemoteUrl), RemoteUrl, RemoteIP),
+              Detail = strcat(RemoteIP, ":", RemotePort, " ", ActionType),
+              Via = InitiatingProcessFileName, ViaCommandLine = InitiatingProcessCommandLine;
+
+// ---- Step 7: Emails that carried it as an attachment ----
+let EmailAttachments =
+    EmailAttachmentInfo
+    | where Timestamp > ago(lookback)
+    | where SHA256 =~ fileHash
+    | project Timestamp, Source = "Email attachment", DeviceName = "", Account = RecipientEmailAddress,
+              What = FileName, Detail = strcat("From ", SenderFromAddress), Via = "", ViaCommandLine = "";
+
+// ---- Output ----
+// One timeline, oldest first, so you can see where the file came from before where it went.
+union isfuzzy=true Profile, Written, Executed, LoadedAsDll, ChildProcesses, Connections, EmailAttachments
+| project Timestamp, Source, DeviceName, Account, What, Detail, Via, ViaCommandLine
+| sort by Timestamp asc
