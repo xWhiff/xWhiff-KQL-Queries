@@ -1,0 +1,109 @@
+// =============================================================================
+// Title:          Device - Defence Evasion Check
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one device and lists attempts to blind or weaken its
+//                 defences: Defender exclusions or protections switched off (by
+//                 command or registry policy), the firewall turned off, event logs
+//                 or audit policy cleared, security services stopped or killed, Safe
+//                 Mode boot tricks, and Defender's own tamper-protection blocks.
+//
+// MITRE ATT&CK:   T1562.001 - Impair Defenses: Disable or Modify Tools;
+//                 T1562.004 - Impair Defenses: Disable or Modify System Firewall;
+//                 T1562.002 - Impair Defenses: Disable Windows Event Logging;
+//                 T1070.001 - Indicator Removal: Clear Windows Event Logs;
+//                 T1562.009 - Impair Defenses: Safe Mode Boot
+// Data sources:   DeviceInfo, DeviceProcessEvents, DeviceRegistryEvents, DeviceEvents
+// References:     https://attack.mitre.org/techniques/T1562/
+//
+// How to use:     Set deviceName and lookback. Any row is worth reading; "Tamper
+//                 protection" rows mean Defender blocked an attempt, which still
+//                 tells you someone tried. Check ByProcess / ByCommandLine for who.
+// Tuning / FPs:   IT tools (Intune, SCCM, RMM agents, GPO) set Defender exclusions
+//                 and policies legitimately: add them to ExcludedParents once checked.
+//                 Base64-encoded PowerShell isn't decoded, so may be missed.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let deviceName = "pc01.contoso.com";  // REPLACE: device to check (short name also works)
+let lookback = 7d;                    // how far back to search
+let ExcludedParents = dynamic([]);    // e.g. "AgentExecutor.exe" (Intune) once confirmed legitimate
+// Security services attackers try to stop.
+let SecurityServices = dynamic(["WinDefend", "Sense", "WdNisSvc", "WdFilter", "MpsSvc", "EventLog", "wscsvc", "SecurityHealthService"]);
+
+// ---- Step 1: Find the device's ID ----
+let devId = toscalar(
+    DeviceInfo
+    | where Timestamp > ago(lookback + 7d)
+    | where DeviceName =~ deviceName or DeviceName startswith strcat(deviceName, ".")
+    | summarize arg_max(Timestamp, DeviceId)
+    | project DeviceId);
+
+// ---- Step 2: Commands that switch defences off ----
+// Each command line is labelled with what it does; anything unlabelled is dropped.
+let Commands =
+    DeviceProcessEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where InitiatingProcessFileName !in~ (ExcludedParents)
+    | extend Technique = case(
+        ProcessCommandLine has_any ("Set-MpPreference", "Add-MpPreference")
+            and ProcessCommandLine has_any ("Exclusion", "DisableRealtimeMonitoring", "DisableBehaviorMonitoring",
+                                            "DisableIOAVProtection", "DisableScriptScanning", "DisableIntrusionPreventionSystem"),
+            "Defender exclusion / protection off",
+        FileName =~ "netsh.exe" and ProcessCommandLine has_any ("state off", "opmode disable", "opmode mode=disable"),
+            "Firewall turned off",
+        (FileName =~ "wevtutil.exe" and ProcessCommandLine has_any ("cl", "clear-log"))
+            or ProcessCommandLine has_any ("Clear-EventLog", "Remove-EventLog"),
+            "Event log cleared",
+        FileName =~ "auditpol.exe" and ProcessCommandLine has_any ("/clear", "/remove", "disable"),
+            "Audit policy cleared",
+        FileName in~ ("sc.exe", "net.exe", "net1.exe") and ProcessCommandLine has_any ("stop", "delete", "disabled")
+            and ProcessCommandLine has_any (SecurityServices),
+            "Security service stopped",
+        FileName =~ "taskkill.exe" and ProcessCommandLine has_any ("MsMpEng", "MsSense", "SenseIR", "SecurityHealth"),
+            "Security process killed",
+        FileName =~ "bcdedit.exe" and ProcessCommandLine has "safeboot",
+            "Safe Mode boot set",
+        FileName =~ "fsutil.exe" and ProcessCommandLine has "deletejournal",
+            "USN journal deleted",
+        "")
+    | where isnotempty(Technique)
+    | project Timestamp, Technique, Detail = ProcessCommandLine, Account = AccountName,
+              ByProcess = InitiatingProcessFileName, ByCommandLine = InitiatingProcessCommandLine;
+
+// ---- Step 3: Defender switched off through registry policy ----
+// The same settings can be changed by writing policy values directly.
+let RegistryChanges =
+    DeviceRegistryEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where ActionType == "RegistryValueSet"
+    | where RegistryKey has @"\Policies\Microsoft\Windows Defender"
+    | where RegistryValueName startswith "Disable" or RegistryKey has @"\Exclusions\"
+    | where InitiatingProcessFileName !in~ (ExcludedParents)
+    | project Timestamp, Technique = "Defender policy changed in registry",
+              Detail = strcat(RegistryKey, @"\", RegistryValueName, " = ", RegistryValueData),
+              Account = InitiatingProcessAccountName, ByProcess = InitiatingProcessFileName,
+              ByCommandLine = InitiatingProcessCommandLine;
+
+// ---- Step 4: Tampering that Defender blocked ----
+let TamperEvents =
+    DeviceEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where ActionType == "TamperingAttempt"
+    | project Timestamp, Technique = "Tamper protection blocked a change", Detail = tostring(AdditionalFields),
+              Account = InitiatingProcessAccountName, ByProcess = InitiatingProcessFileName,
+              ByCommandLine = InitiatingProcessCommandLine;
+
+// ---- Output ----
+// One list, oldest first.
+union isfuzzy=true Commands, RegistryChanges, TamperEvents
+| project Timestamp, Technique, Detail, Account, ByProcess, ByCommandLine
+| sort by Timestamp asc
