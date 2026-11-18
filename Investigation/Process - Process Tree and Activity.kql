@@ -1,0 +1,111 @@
+// =============================================================================
+// Title:          Process - Process Tree and Activity
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one process on one device (e.g. the powershell.exe in
+//                 an alert) and shows its family tree (grandparent > parent >
+//                 process), every child process it started, and everything it did:
+//                 network connections, files written and registry changes.
+//
+// MITRE ATT&CK:   N/A - general process triage for any alert
+// Data sources:   DeviceInfo, DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents,
+//                 DeviceRegistryEvents
+// References:     https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table
+//
+// How to use:     Fill in deviceName, processName and aroundTime from the alert. If
+//                 the alert gives a process ID, put it in processId to pick exactly
+//                 that one; leave 0 to include every run of processName in the window.
+//                 Read the "Process" rows first (Tree shows where it came from).
+// Tuning / FPs:   A common process (e.g. svchost.exe) with processId = 0 returns a
+//                 lot: set processId or shorten window. Activity is matched on process
+//                 ID plus start time, so a reused PID isn't confused with this one.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let deviceName  = "pc01.contoso.com";             // REPLACE: device from the alert (short name also works)
+let processName = "powershell.exe";               // REPLACE: process file name from the alert
+let processId   = 0;                              // optional: process ID from the alert, 0 = any
+let aroundTime  = datetime(2026-01-01 00:00:00);  // REPLACE: roughly when the process started (UTC)
+let window      = 1h;                             // look for the process start this long either side
+let activityFor = 24h;                            // how long after the start to collect its activity
+
+// ---- Step 1: Find the device's ID ----
+let devId = toscalar(
+    DeviceInfo
+    | where Timestamp between ((aroundTime - 7d) .. (aroundTime + window))
+    | where DeviceName =~ deviceName or DeviceName startswith strcat(deviceName, ".")
+    | summarize arg_max(Timestamp, DeviceId)
+    | project DeviceId);
+
+// ---- Step 2: The process itself, with its parent and grandparent ----
+// materialize() keeps the result in memory because every later step uses it.
+let Targets = materialize(
+    DeviceProcessEvents
+    | where Timestamp between ((aroundTime - window) .. (aroundTime + window))
+    | where DeviceId == devId
+    | where FileName =~ processName
+    | where processId == 0 or ProcessId == processId
+    | project Timestamp, ProcessId, ProcessCreationTime, FileName, ProcessCommandLine, AccountName,
+              InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessParentFileName, SHA256
+);
+let TargetKeys = Targets | project TargetPid = ProcessId, TargetStart = ProcessCreationTime, TargetName = FileName;
+let TargetRows =
+    Targets
+    | project Timestamp, Relation = "Process", What = FileName, Detail = ProcessCommandLine, Account = AccountName,
+              Tree = strcat(InitiatingProcessParentFileName, " > ", InitiatingProcessFileName, " > ", FileName),
+              ProcessId, SHA256;
+
+// ---- Step 3: Child processes it started ----
+// Matched on parent process ID + parent start time, so a reused PID isn't mixed in.
+let Children =
+    DeviceProcessEvents
+    | where Timestamp between ((aroundTime - window) .. (aroundTime + window + activityFor))
+    | where DeviceId == devId
+    | join kind=inner TargetKeys on $left.InitiatingProcessId == $right.TargetPid,
+                                    $left.InitiatingProcessCreationTime == $right.TargetStart
+    | project Timestamp, Relation = "Child process", What = FileName, Detail = ProcessCommandLine,
+              Account = AccountName, Tree = strcat(TargetName, " > ", FileName), ProcessId, SHA256;
+
+// ---- Step 4: Network connections it made ----
+let Network =
+    DeviceNetworkEvents
+    | where Timestamp between ((aroundTime - window) .. (aroundTime + window + activityFor))
+    | where DeviceId == devId
+    | join kind=inner TargetKeys on $left.InitiatingProcessId == $right.TargetPid,
+                                    $left.InitiatingProcessCreationTime == $right.TargetStart
+    | project Timestamp, Relation = "Network", What = iff(isnotempty(RemoteUrl), RemoteUrl, RemoteIP),
+              Detail = strcat(RemoteIP, ":", RemotePort, " ", ActionType), Account = InitiatingProcessAccountName,
+              Tree = TargetName, ProcessId = InitiatingProcessId, SHA256 = InitiatingProcessSHA256;
+
+// ---- Step 5: Files it created, changed or deleted ----
+let Files =
+    DeviceFileEvents
+    | where Timestamp between ((aroundTime - window) .. (aroundTime + window + activityFor))
+    | where DeviceId == devId
+    | join kind=inner TargetKeys on $left.InitiatingProcessId == $right.TargetPid,
+                                    $left.InitiatingProcessCreationTime == $right.TargetStart
+    | project Timestamp, Relation = strcat("File ", ActionType), What = FileName, Detail = FolderPath,
+              Account = InitiatingProcessAccountName, Tree = TargetName, ProcessId = InitiatingProcessId, SHA256;
+
+// ---- Step 6: Registry changes it made ----
+let Registry =
+    DeviceRegistryEvents
+    | where Timestamp between ((aroundTime - window) .. (aroundTime + window + activityFor))
+    | where DeviceId == devId
+    | join kind=inner TargetKeys on $left.InitiatingProcessId == $right.TargetPid,
+                                    $left.InitiatingProcessCreationTime == $right.TargetStart
+    | project Timestamp, Relation = "Registry", What = RegistryValueName,
+              Detail = strcat(RegistryKey, iff(isnotempty(RegistryValueData), strcat(" = ", RegistryValueData), "")),
+              Account = InitiatingProcessAccountName, Tree = TargetName, ProcessId = InitiatingProcessId,
+              SHA256 = InitiatingProcessSHA256;
+
+// ---- Output ----
+// One timeline, oldest first: the process starting, then everything it did.
+union isfuzzy=true TargetRows, Children, Network, Files, Registry
+| project Timestamp, Relation, What, Detail, Account, Tree, ProcessId, SHA256
+| sort by Timestamp asc

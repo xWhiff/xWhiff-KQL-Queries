@@ -1,0 +1,104 @@
+// =============================================================================
+// Title:          Device - Lateral Movement From Device
+// Type:           Investigation
+// Platform:       Microsoft Defender XDR - Advanced Hunting
+// Description:    Starts from one (possibly compromised) device and shows where it
+//                 may have spread: internal connections it made over admin protocols
+//                 (SMB, RPC, RDP, WinRM, SSH), logons it made to other devices, and
+//                 remote-execution commands run on it (PsExec, WMIC, PowerShell
+//                 remoting, sc / schtasks against another host).
+//
+// MITRE ATT&CK:   T1021.001 - Remote Desktop Protocol; T1021.002 - SMB/Windows Admin Shares;
+//                 T1021.006 - Windows Remote Management; T1047 - Windows Management Instrumentation;
+//                 T1570 - Lateral Tool Transfer
+// Data sources:   DeviceInfo, DeviceNetworkInfo, DeviceNetworkEvents, DeviceLogonEvents, DeviceProcessEvents
+// References:     https://attack.mitre.org/tactics/TA0008/
+//
+// How to use:     Set deviceName and the time range. Start with "Logon to another
+//                 device" rows (where it actually got in), then remote commands, then
+//                 the connection summary to spot targets it only tried.
+// Tuning / FPs:   File servers, domain controllers and management servers get SMB /
+//                 RPC from everyone: add their IPs to ExcludedTargets. Admin
+//                 workstations legitimately RDP and run remote commands, and
+//                 PowerShell scripts often read from \\fileserver shares.
+//
+// Author:         xWhiff
+// Created:        2026-11-18
+// Updated:        2026-11-18 - initial version
+// Version:        1.0
+// =============================================================================
+
+// ---- Inputs ----
+let deviceName = "pc01.contoso.com";  // REPLACE: device that may be compromised (short name also works)
+let lookback = 7d;                    // how far back to search
+let ExcludedTargets = dynamic([]);    // e.g. "192.0.2.5" for a file server or DC once confirmed normal
+// Ports used to move between Windows / Linux machines.
+let AdminPorts = dynamic([22, 135, 445, 3389, 5985, 5986]);
+
+// ---- Step 1: Find the device's ID and its IP addresses ----
+let devId = toscalar(
+    DeviceInfo
+    | where Timestamp > ago(lookback + 7d)
+    | where DeviceName =~ deviceName or DeviceName startswith strcat(deviceName, ".")
+    | summarize arg_max(Timestamp, DeviceId)
+    | project DeviceId);
+let shortName = tostring(split(deviceName, ".")[0]);   // other devices often record the short name
+let DeviceIPs =
+    DeviceNetworkInfo
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | mv-expand IpInfo = todynamic(IPAddresses)
+    | project Ip = tostring(IpInfo.IPAddress)
+    | where isnotempty(Ip)
+    | distinct Ip;
+
+// ---- Step 2: Internal connections over admin protocols, summarised per target ----
+let Connections =
+    DeviceNetworkEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where RemotePort in (AdminPorts)
+    | where RemoteIPType !in ("Public", "Loopback")         // lateral movement is internal, and not to itself
+    | where RemoteIP !in (ExcludedTargets)
+    | extend Protocol = case(RemotePort == 445, "SMB", RemotePort == 135, "RPC / WMI", RemotePort == 3389, "RDP",
+                             RemotePort in (5985, 5986), "WinRM", RemotePort == 22, "SSH", tostring(RemotePort))
+    | summarize Timestamp = max(Timestamp), FirstSeen = min(Timestamp), Attempts = count(),
+                Succeeded = countif(ActionType == "ConnectionSuccess"),
+                Accounts = make_set(InitiatingProcessAccountName, 5), Processes = make_set(InitiatingProcessFileName, 5)
+        by RemoteIP, Protocol
+    | project Timestamp, Type = strcat("Connection (", Protocol, ")"), Target = RemoteIP,
+              Detail = strcat(Succeeded, " of ", Attempts, " succeeded since ", format_datetime(FirstSeen, "yyyy-MM-dd HH:mm"),
+                              " | processes: ", strcat_array(Processes, ", ")),
+              Account = strcat_array(Accounts, ", ");
+
+// ---- Step 3: Logons this device made to other devices ----
+// Other devices record where a remote logon came from (RemoteDeviceName / RemoteIP).
+let OutboundLogons =
+    DeviceLogonEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId != devId
+    | where RemoteDeviceName =~ shortName or RemoteDeviceName =~ deviceName or RemoteIP in (DeviceIPs)
+    | project Timestamp, Type = strcat("Logon to another device (", LogonType, ")"), Target = DeviceName,
+              Detail = strcat(ActionType, iff(isnotempty(FailureReason), strcat(" | ", FailureReason), ""),
+                              iff(IsLocalAdmin, " | local admin", "")),
+              Account = strcat(AccountDomain, @"\", AccountName);
+
+// ---- Step 4: Remote-execution commands run on this device ----
+// Tools pointed at another machine: \\host paths, /node:, -ComputerName, PowerShell remoting.
+let RemoteCommands =
+    DeviceProcessEvents
+    | where Timestamp > ago(lookback)
+    | where DeviceId == devId
+    | where FileName in~ ("psexec.exe", "psexec64.exe", "paexec.exe", "wmic.exe", "winrs.exe", "sc.exe",
+                          "schtasks.exe", "powershell.exe", "pwsh.exe", "mstsc.exe", "reg.exe")
+    | where ProcessCommandLine contains @"\\"                                   // \\host UNC paths
+         or ProcessCommandLine has_any ("/node:", "-ComputerName", "Invoke-Command", "Enter-PSSession", "New-PSSession")
+         or ProcessCommandLine matches regex @"(?i)(\s/s\s+\S+|\s-r:\S+|\s/v:\S+)"  // schtasks /s, winrs -r:, mstsc /v:
+    | project Timestamp, Type = "Remote command", Target = FileName, Detail = ProcessCommandLine,
+              Account = AccountName;
+
+// ---- Output ----
+// One list, oldest first.
+union isfuzzy=true Connections, OutboundLogons, RemoteCommands
+| project Timestamp, Type, Target, Detail, Account
+| sort by Timestamp asc

@@ -42,14 +42,19 @@ Built automatically from each query's header and the `Docs/` folder.
 
 | Query | Platform | MITRE ATT&CK | Data sources |
 |---|---|---|---|
+| [Alert - Related Alerts by Entity](Investigation/Alert%20-%20Related%20Alerts%20by%20Entity.kql) | Defender XDR | - | AlertEvidence, AlertInfo |
 | [Device - Activity Timeline Around Alert](Investigation/Device%20-%20Activity%20Timeline%20Around%20Alert.kql) | Defender XDR | - | DeviceInfo, DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents, DeviceRegistryEvents, DeviceLogonEvents, DeviceEvents |
+| [Device - Lateral Movement From Device](Investigation/Device%20-%20Lateral%20Movement%20From%20Device.kql) | Defender XDR | T1021.001, T1021.002, T1021.006, T1047, T1570 | DeviceInfo, DeviceNetworkInfo, DeviceNetworkEvents, DeviceLogonEvents, DeviceProcessEvents |
 | [Device - Local IP to Network Activity](Investigation/Device%20-%20Local%20IP%20to%20Network%20Activity.kql) | Defender XDR | - | DeviceNetworkEvents, DeviceNetworkInfo, DeviceProcessEvents |
+| [Device - Persistence Check](Investigation/Device%20-%20Persistence%20Check.kql) | Defender XDR | T1053.005, T1543.003, T1546.003, T1546.012, T1547.001, T1547.004 | DeviceInfo, DeviceRegistryEvents, DeviceEvents, DeviceFileEvents |
 | [Domain - Who Contacted It](Investigation/Domain%20-%20Who%20Contacted%20It.kql) | Defender XDR | - | DeviceNetworkEvents, DeviceEvents, EmailUrlInfo, EmailEvents, UrlClickEvents |
 | [Email - Phishing Message Trace](Investigation/Email%20-%20Phishing%20Message%20Trace.kql) | Defender XDR | T1566.001, T1566.002 | EmailEvents, EmailPostDeliveryEvents, EmailUrlInfo, EmailAttachmentInfo, UrlClickEvents, DeviceFileEvents |
 | [Entra ID - Sign-in Logs](Investigation/Entra%20ID%20-%20Sign-in%20Logs.kql) | Sentinel | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
 | [Entra ID - User Authentication Timeline](Investigation/Entra%20ID%20-%20User%20Authentication%20Timeline.kql) | Sentinel | T1078.004, T1556.006 | SigninLogs, AADNonInteractiveUserSignInLogs, AuditLogs |
 | [File - Hash Spread and Execution](Investigation/File%20-%20Hash%20Spread%20and%20Execution.kql) | Defender XDR | - | DeviceFileEvents, DeviceProcessEvents, DeviceImageLoadEvents, DeviceNetworkEvents, EmailAttachmentInfo, FileProfile() |
 | [IP - External IP Activity](Investigation/IP%20-%20External%20IP%20Activity.kql) | Defender XDR | - | DeviceNetworkEvents, DeviceLogonEvents, EntraIdSignInEvents, EmailEvents |
+| [Process - Process Tree and Activity](Investigation/Process%20-%20Process%20Tree%20and%20Activity.kql) | Defender XDR | - | DeviceInfo, DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents, DeviceRegistryEvents |
+| [User - Cloud App Activity](Investigation/User%20-%20Cloud%20App%20Activity.kql) | Defender XDR | T1098, T1114.003, T1530, T1564.008 | CloudAppEvents |
 | [User - Endpoint Logon Activity](Investigation/User%20-%20Endpoint%20Logon%20Activity.kql) | Defender XDR | T1021.001, T1078 | DeviceLogonEvents, IdentityLogonEvents |
 
 ### Baselines
