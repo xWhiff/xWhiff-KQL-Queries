@@ -30,6 +30,9 @@ Built automatically from each query's header and the `Docs/` folder.
 
 | Query | Platform | MITRE ATT&CK | Data sources |
 |---|---|---|---|
+| [CVE-2026-114938 - Java2Shell OpenJDK Base64 RCE Exploitation](Threat%20Hunting/CVE-2026-114938%20-%20Java2Shell%20OpenJDK%20Base64%20RCE%20Exploitation.kql) | Defender XDR | T1059.001, T1059.003, T1059.004, T1082, T1105, T1190, T1505.003 | DeviceProcessEvents, DeviceFileEvents, DeviceTvmSoftwareVulnerabilities, DeviceTvmSoftwareInventory, DeviceInfo |
+| [CVE-2026-123007 - NGINX2Root nginx HTTP2 RCE Exploitation](Threat%20Hunting/CVE-2026-123007%20-%20NGINX2Root%20nginx%20HTTP2%20RCE%20Exploitation.kql) | Defender XDR | T1053.003, T1059.004, T1098.004, T1105, T1190, T1574.006 | DeviceProcessEvents, DeviceFileEvents, DeviceTvmSoftwareVulnerabilities, DeviceTvmSoftwareInventory, DeviceInfo |
+| [CVE-2026-132825 - Ruby2Shell Ruby Heap Overflow RCE Exploitation](Threat%20Hunting/CVE-2026-132825%20-%20Ruby2Shell%20Ruby%20Heap%20Overflow%20RCE%20Exploitation.kql) | Defender XDR | T1059.001, T1059.003, T1059.004, T1082, T1105, T1190 | DeviceProcessEvents, DeviceTvmSoftwareVulnerabilities, DeviceTvmSoftwareInventory, DeviceInfo |
 | [ClickFix - Multi-Stage Attack Chain Correlation](Threat%20Hunting/ClickFix%20-%20Multi-Stage%20Attack%20Chain%20Correlation.kql) | Sentinel / unified portal | T1027, T1036.005, T1047, T1059.001, T1059.003, T1071.001, T1082, T1105, T1112, T1140, T1204.004, T1218.005, T1218.007, T1546.015, T1560.001, T1564.003, T1574.002, T1620 | DeviceProcessEvents, DeviceRegistryEvents, DeviceFileEvents, DeviceEvents, DeviceNetworkEvents |
 
 ### Detection

@@ -87,6 +87,12 @@
       "showSubtechniques": true
     },
     {
+      "techniqueID": "T1053.003",
+      "score": 1,
+      "comment": "CVE-2026-123007 - NGINX2Root nginx HTTP2 RCE Exploitation",
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1053.005",
       "score": 2,
       "comment": "Device - Persistence Check; DeviceFileEvents - Suspicious File Activity Triage",
@@ -100,20 +106,20 @@
     },
     {
       "techniqueID": "T1059.001",
-      "score": 2,
-      "comment": "NodeJS - Child Shell Process Baseline; ClickFix - Multi-Stage Attack Chain Correlation",
+      "score": 4,
+      "comment": "NodeJS - Child Shell Process Baseline; CVE-2026-114938 - Java2Shell OpenJDK Base64 RCE Exploitation; CVE-2026-132825 - Ruby2Shell Ruby Heap Overflow RCE Exploitation; ClickFix - Multi-Stage Attack Chain Correlation",
       "showSubtechniques": true
     },
     {
       "techniqueID": "T1059.003",
-      "score": 2,
-      "comment": "NodeJS - Child Shell Process Baseline; ClickFix - Multi-Stage Attack Chain Correlation",
+      "score": 4,
+      "comment": "NodeJS - Child Shell Process Baseline; CVE-2026-114938 - Java2Shell OpenJDK Base64 RCE Exploitation; CVE-2026-132825 - Ruby2Shell Ruby Heap Overflow RCE Exploitation; ClickFix - Multi-Stage Attack Chain Correlation",
       "showSubtechniques": true
     },
     {
       "techniqueID": "T1059.004",
-      "score": 1,
-      "comment": "NodeJS - Child Shell Process Baseline",
+      "score": 4,
+      "comment": "NodeJS - Child Shell Process Baseline; CVE-2026-114938 - Java2Shell OpenJDK Base64 RCE Exploitation; CVE-2026-123007 - NGINX2Root nginx HTTP2 RCE Exploitation; CVE-2026-132825 - Ruby2Shell Ruby Heap Overflow RCE Exploitation",
       "showSubtechniques": true
     },
     {
@@ -148,8 +154,8 @@
     },
     {
       "techniqueID": "T1082",
-      "score": 2,
-      "comment": "Device - Discovery Commands; ClickFix - Multi-Stage Attack Chain Correlation",
+      "score": 4,
+      "comment": "Device - Discovery Commands; CVE-2026-114938 - Java2Shell OpenJDK Base64 RCE Exploitation; CVE-2026-132825 - Ruby2Shell Ruby Heap Overflow RCE Exploitation; ClickFix - Multi-Stage Attack Chain Correlation",
       "showSubtechniques": true
     },
     {
@@ -165,9 +171,15 @@
       "showSubtechniques": true
     },
     {
+      "techniqueID": "T1098.004",
+      "score": 1,
+      "comment": "CVE-2026-123007 - NGINX2Root nginx HTTP2 RCE Exploitation",
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1105",
-      "score": 2,
-      "comment": "DeviceFileEvents - Suspicious File Activity Triage; ClickFix - Multi-Stage Attack Chain Correlation",
+      "score": 5,
+      "comment": "DeviceFileEvents - Suspicious File Activity Triage; CVE-2026-114938 - Java2Shell OpenJDK Base64 RCE Exploitation; CVE-2026-123007 - NGINX2Root nginx HTTP2 RCE Exploitation; CVE-2026-132825 - Ruby2Shell Ruby Heap Overflow RCE Exploitation; ClickFix - Multi-Stage Attack Chain Correlation",
       "showSubtechniques": true
     },
     {
@@ -190,8 +202,8 @@
     },
     {
       "techniqueID": "T1190",
-      "score": 1,
-      "comment": "NodeJS - Child Shell Process Baseline",
+      "score": 4,
+      "comment": "NodeJS - Child Shell Process Baseline; CVE-2026-114938 - Java2Shell OpenJDK Base64 RCE Exploitation; CVE-2026-123007 - NGINX2Root nginx HTTP2 RCE Exploitation; CVE-2026-132825 - Ruby2Shell Ruby Heap Overflow RCE Exploitation",
       "showSubtechniques": true
     },
     {
@@ -228,6 +240,12 @@
       "techniqueID": "T1482",
       "score": 1,
       "comment": "Device - Discovery Commands",
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1505.003",
+      "score": 1,
+      "comment": "CVE-2026-114938 - Java2Shell OpenJDK Base64 RCE Exploitation",
       "showSubtechniques": true
     },
     {
@@ -369,6 +387,12 @@
       "showSubtechniques": true
     },
     {
+      "techniqueID": "T1574.006",
+      "score": 1,
+      "comment": "CVE-2026-123007 - NGINX2Root nginx HTTP2 RCE Exploitation",
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1620",
       "score": 1,
       "comment": "ClickFix - Multi-Stage Attack Chain Correlation",
@@ -387,7 +411,7 @@
       "#08519c"
     ],
     "minValue": 0,
-    "maxValue": 3
+    "maxValue": 5
   },
   "legendItems": []
 }
